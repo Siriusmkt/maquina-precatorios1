@@ -6,6 +6,7 @@ from collections.abc import Iterator
 import psycopg
 import pytest
 
+from tests.apoio.api import redis_descartavel
 from tests.apoio.banco import BancoDeTeste, Cenario, criar_banco, remover_banco
 
 DSN_PADRAO = "postgresql://postgres@localhost:54329/postgres"
@@ -39,3 +40,13 @@ def cenario(banco: BancoDeTeste) -> Iterator[Cenario]:
         yield c
     finally:
         c.fechar()
+
+
+@pytest.fixture(scope="session")
+def redis_url() -> Iterator[str]:
+    url = os.environ.get("TEST_REDIS_URL")
+    if url:
+        yield url
+        return
+    with redis_descartavel() as url_local:
+        yield url_local

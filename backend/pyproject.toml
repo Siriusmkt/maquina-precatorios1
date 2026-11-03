@@ -40,11 +40,12 @@ line-length = 120
 target-version = "py313"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "B", "UP", "S", "N", "SIM", "RUF", "PL", "ASYNC", "DTZ", "PT", "RET", "ARG"]
+select = ["E", "F", "W", "I", "B", "UP", "S", "N", "SIM", "RUF", "PL", "ASYNC", "DTZ", "PT", "RET", "ARG", "BLE"]
 ignore = [
   "PLR0913",  # funcoes de fabrica de teste com muitos parametros nomeados
   "PLR2004",  # numeros magicos em asserts de teste
   "RUF001", "RUF002", "RUF003",  # texto em portugues com acentos
+  "N818",  # nomes de excecao em portugues (ErroApi, TokenInvalido) em vez do sufixo Error
 ]
 
 [tool.ruff.lint.per-file-ignores]
