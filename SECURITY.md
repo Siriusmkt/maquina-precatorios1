@@ -1,0 +1,54 @@
+# Segurança
+
+Este documento lista cada ameaça considerada, o controle que a trata e o teste que prova que ele funciona.
+
+O princípio é ter camadas independentes. Se uma falhar (um bug na API, por exemplo), a seguinte ainda segura: o banco aplica as próprias regras, mesmo que alguém chegue até ele por outro caminho.
+
+## Ameaças e controles
+
+| Ameaça | Controle | Onde | Teste |
+|--------|----------|------|-------|
+| **Força bruta e vazamento de senhas** | Limite por IP (20/min) e por e-mail (5 a cada 15 min), contado no Redis com algoritmo GCRA. Se o Redis cair, o login é recusado (falha fechada). Mesma resposta para e-mail inexistente e senha errada. | `app/auth/rotas.py`, `app/seguranca/limite.py` | `test_forca_bruta_por_email_e_bloqueada_antes_do_auth` |
+| **Roubo de sessão por XSS** | Os tokens ficam em cookies httpOnly + Secure + SameSite=Strict, com prefixo `__Host-`; o JS nunca vê token. A CSP não permite scripts inline nem `eval`. O React escapa todo texto (não há `dangerouslySetInnerHTML`). | `app/auth/sessao.py`, `frontend/nginx/seguranca.conf` | `test_login_define_cookies_blindados...`; roteiro do Playwright sem violação de CSP |
+| **CSRF** | Origin conferido contra uma lista fechada (subdomínio não conta), mais token double-submit. | `app/seguranca/http.py` | `test_csrf_*` |
+| **SQL injection** | 100% das consultas são parametrizadas. Os filtros dinâmicos usam SQL estático com parâmetros opcionais, e nenhum nome de tabela ou coluna vem do cliente. Mesmo uma injeção hipotética ficaria presa ao papel e às linhas do próprio usuário (RLS). | `app/consultas/*` | `test_codigo_invalido...['; drop table...]`, entradas inválidas no radar |
+| **JWT forjado** | Algoritmo fixado pela configuração (o cabeçalho do token não decide nada). `aud`, `iss`, `exp`, `sub` e `role` são obrigatórios. Rejeita `alg: none`, chave errada, token expirado, papel `service_role` e anônimo. | `app/seguranca/jwt.py` | `test_jwt_invalido_e_recusado` (7 casos), `test_alg_none_e_recusado` |
+| **Um cliente ver dados de outro (IDOR)** | RLS em toda tabela. FKs compostas `(tenant_id, id)`: o banco recusa uma referência cruzada mesmo que o atacante saiba o UUID. Toda rota checa se o usuário é membro do tenant e devolve 404 se não for. | migrações, `app/consultas/tenant.py` | `test_tenant_nao_ve_nem_altera...`, `test_fk_composta...`, `test_tenant_alheio_responde_404` |
+| **Escalada de privilégio** | Policies separadas por comando e papel. As colunas graváveis são listadas uma a uma. A aprovação de proposta é validada por trigger (alçada do gestor), e `aprovada_por` é sempre o usuário logado. | migração de segurança | `test_operador_nao_aprova`, `test_gestor_fora_da_alcada...`, `test_campos_de_controle_nao_sao_gravaveis` |
+| **Raspagem e cópia da base** | `core`/`app` não ficam expostos no PostgREST; tudo passa pela API. O radar não mostra credor, processo nem dado sensível. Orçamento diário de linhas por tenant, cursor com teto de 50 por página, limite por minuto e cota mensal para revelar credor. | `app/servicos/orcamento.py`, `app.v_radar`, `app.assumir_lead` | `test_orcamento_diario_do_radar`, `test_insercao_direta_de_lead_e_bloqueada`, `test_cota_mensal...` |
+| **Vazamento de dado pessoal** | Telefone, e-mail e CPF cifrados com AES-256-GCM. O contexto (AAD) prende o dado ao tenant: copiado para outro, não decifra. Índice cego HMAC (sem hash reversível). A revelação passa por uma função auditada e limitada a 60 por hora. Logs com redação automática. Superpreferência (dado de saúde) nunca chega ao front. | `app/seguranca/cripto.py`, `app.revelar_contato`, `app/logs.py` | `test_contato_cifrado_de_ponta_a_ponta`, `test_contato_cifrado_nao_vale_em_outro_tenant`, `TestLogs` |
+| **Golpe do falso comprador** | Código anti-golpe com 12 símbolos (~59 bits), gerado no banco por CSPRNG, com validade, revogação e limite por IP (10/min e 100/dia). Inválido e inexistente recebem a mesma resposta. A página pública não mostra nome do credor e mascara o processo. | `app.emitir_verificacao`, `app.consultar_verificacao` | `test_emitir_e_conferir_codigo`, `test_codigos_sao_unicos_e_sem_vies`, `test_verificacao_publica_limitada_por_ip` |
+| **Exposição de detalhes internos** | Erros no padrão RFC 9457, sem stack trace e com `request_id` para o suporte. Sem `/docs` nem `/openapi.json` em produção, sem cabeçalho `Server`, sem source maps. | `app/erros.py`, `app/main.py`, `vite.config.ts` | `test_erro_inesperado_nao_vaza_detalhes`, `test_producao_nao_publica_documentacao` |
+| **Cópia do frontend** | Veja a seção abaixo. | `frontend/nginx`, `vite.config.ts` | trava no build + teste do nginx (401 sem sessão) |
+| **Cadeia de suprimentos** | Versões exatas, `npm ci --ignore-scripts`, `npm audit` e `pip-audit` no CI. O `javascript-obfuscator` foi rejeitado por puxar SDKs de nuvem para o build. | `package.json`, CI | `npm audit` e `pip-audit` sem achados |
+| **Negação de serviço** | Limite de corpo (64 KB, inclusive em streaming), `statement_timeout` de 5 s no papel da API, `limit_req` no nginx e `maxmemory` no Redis. | `app/seguranca/http.py`, migração | `test_corpo_em_streaming_tambem_e_limitado` |
+| **Queda do banco** | O pool valida a conexão antes de usar, e uma queda vira 503 (nunca 500 nem dado parcial). | `app/banco/sessao.py` | `test_api_sobrevive_a_conexoes_derrubadas` |
+| **Adulteração da auditoria** | Somente inserção: UPDATE bloqueado por trigger, inclusive para o dono das tabelas; DELETE sem grant. A trilha não guarda segredos (nem cifrados). | migração de segurança | `test_auditoria_so_para_gestao_e_imutavel`, `test_auditoria_nao_guarda_segredos` |
+
+## Sobre "clonagem impossível"
+
+Sendo direto: tudo o que aparece numa tela pode ser fotografado e redesenhado. Isso vale para qualquer produto, e nenhuma técnica de frontend muda isso. Por isso a proteção foi desenhada para que **uma cópia não sirva para nada**:
+
+1. **Nenhuma regra de negócio no navegador.** Score, preço justo, alçada e funil rodam no servidor. Os sliders do simulador chamam a API; a fórmula nunca vai para o JavaScript.
+2. **O código das telas internas só é entregue a quem tem sessão.** O nginx consulta a API (`auth_request`) antes de servir `/app-assets/`. Quem não tem conta não baixa nem o código do painel. Uma trava no build falha se algum código de `src/app` cair num arquivo público.
+3. **Minificação agressiva, sem source maps.** O código entregue é difícil de ler. Não usamos ofuscação pesada: ela derruba o desempenho das animações e não impede quem tem conta. Além disso, a ferramenta disponível trazia mais risco do que proteção.
+4. **Os dados são o ativo.** Os dados ficam atrás de RLS, cotas, orçamento diário e auditoria. A API recusa outras origens (CSRF por Origin), e os cookies `__Host-` não funcionam em outro domínio.
+5. **Proteção jurídica.** O código é proprietário (`LICENSE`), e o contrato de uso proíbe engenharia reversa e raspagem.
+
+## Próximos passos recomendados
+
+Ordenados por impacto:
+
+- [ ] **MFA (TOTP) obrigatório** para owner e gestor, pelo Supabase Auth. O campo `aal` já chega à API.
+- [ ] No Supabase: **JWT de 15 min** (`GOTRUE_JWT_EXP=900`), **cadastro público desligado** e rotação de refresh token ligada.
+- [ ] **WAF/CDN** na frente (por exemplo, Cloudflare) para rate limit global e gestão de bots.
+- [ ] **Alertas sobre a auditoria**: revelações de contato acima do normal e picos de 401/429.
+- [ ] **Backups criptografados**, com teste de restauração periódico.
+- [ ] **Pentest externo** antes de abrir para o primeiro cliente pagante.
+- [ ] Rotina de **rotação de chave de cifra**: a API já lê a versão da chave em cada valor.
+- [ ] **Retenção LGPD**: apagar os dados pessoais de leads descartados no prazo configurado.
+- [ ] Quando houver exportação: **marca d'água** e registros canário por tenant.
+
+## Como reportar uma vulnerabilidade
+
+Envie os detalhes por e-mail para a equipe responsável. Não abra issue pública.

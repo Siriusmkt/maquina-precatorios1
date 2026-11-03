@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "tipos": "tsc -b",
     "test": "vitest run",
-    "e2e": "node scripts/e2e.mjs"
+    "e2e": "node scripts/telas.cjs"
   },
   "dependencies": {
     "@fontsource-variable/geist": "5.3.0",

@@ -1,0 +1,72 @@
+# Servidor do front + proxy da API, na MESMA origem (cookies __Host-, sem CORS).
+# Variaveis (envsubst ao subir o container): API_UPSTREAM, PROXY_CONFIAVEL, RAIZ_ESTATICA.
+
+server_tokens off;
+
+# IP real do cliente atras do proxy da borda (Traefik do Easypanel).
+set_real_ip_from ${PROXY_CONFIAVEL};
+real_ip_header X-Forwarded-For;
+real_ip_recursive on;
+
+# Segunda camada contra rajadas (a API tem os limites finos por usuario).
+limit_req_zone $binary_remote_addr zone=borda:10m rate=40r/s;
+
+server {
+  listen 8080;
+  server_name _;
+  root ${RAIZ_ESTATICA};
+  index index.html;
+
+  client_max_body_size 64k;
+  client_body_timeout 10s;
+  client_header_timeout 10s;
+  keepalive_timeout 30s;
+  autoindex off;
+
+  # Nunca servir arquivos ocultos ou mapas de codigo (nem devem existir).
+  location ~ /\. { return 404; }
+  location ~* \.map$ { return 404; }
+
+  location /api/ {
+    limit_req zone=borda burst=80 nodelay;
+    proxy_pass http://${API_UPSTREAM};
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_read_timeout 30s;
+    proxy_buffering on;
+  }
+
+  # Subrequisicao interna: a sessao e valida? (204 libera, 401 nega)
+  location = /_sessao {
+    internal;
+    proxy_pass http://${API_UPSTREAM}/api/auth/sessao;
+    proxy_pass_request_body off;
+    proxy_set_header Content-Length "";
+    proxy_set_header Cookie $http_cookie;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  }
+
+  # Codigo das telas internas: so baixa quem esta logado.
+  location /app-assets/ {
+    auth_request /_sessao;
+    include /etc/nginx/maquina/seguranca.conf;
+    add_header Cache-Control "private, max-age=31536000, immutable" always;
+    try_files $uri =404;
+  }
+
+  # Arquivos publicos versionados por hash.
+  location /assets/ {
+    include /etc/nginx/maquina/seguranca.conf;
+    add_header Cache-Control "public, max-age=31536000, immutable" always;
+    try_files $uri =404;
+  }
+
+  # SPA: qualquer rota do app devolve o index (o codigo sensivel esta em /app-assets/).
+  location / {
+    include /etc/nginx/maquina/seguranca.conf;
+    add_header Cache-Control "no-store" always;
+    try_files $uri /index.html;
+  }
+}

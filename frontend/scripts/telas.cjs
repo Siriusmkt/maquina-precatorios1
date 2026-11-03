@@ -13,7 +13,7 @@ const fs = require("node:fs");
 
 const BASE = process.env.BASE ?? "http://127.0.0.1:5173";
 const CODIGO = process.env.CODIGO ?? "";
-const SAIDA = path.resolve(__dirname, "../../docs/telas");
+const SAIDA = process.env.SAIDA ?? path.resolve(__dirname, "../../docs/telas");
 const EMAIL = process.env.EMAIL ?? "gestor@demo.local";
 const SENHA = process.env.SENHA ?? "demo-precatorios-2026";
 // Leve para versionar: JPEG no tamanho CSS (a captura em si e feita com DPR 2).

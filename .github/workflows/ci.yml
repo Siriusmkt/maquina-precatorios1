@@ -1,0 +1,65 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+      redis:
+        image: redis:7.4-alpine
+        ports: ["6379:6379"]
+    env:
+      TEST_DATABASE_URL: postgresql://postgres@localhost:5432/postgres
+      TEST_REDIS_URL: redis://localhost:6379/0
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.11.32"
+      - run: uv sync --frozen
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy app
+      - run: uv run pytest
+      - name: Auditoria de dependencias
+        run: |
+          uv export --format requirements-txt --no-hashes --no-dev > /tmp/req.txt
+          uvx pip-audit -r /tmp/req.txt
+
+  frontend:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm audit --audit-level=moderate
+      - run: npx tsc --noEmit -p .
+      - run: npx vitest run
+      # O build falha se codigo da area logada cair em arquivo publico.
+      - run: npm run build
+      - name: Nenhum source map no pacote
+        run: test -z "$(find dist -name '*.map')"
