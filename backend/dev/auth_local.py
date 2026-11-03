@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import os
 import secrets
-import sys
 import time
 import uuid
 
@@ -20,10 +19,10 @@ import psycopg
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
 
+from dev.guarda import exigir_banco_local
 from dev.semear import SENHA_DEMO, USUARIOS_DEMO
 
-if os.environ.get("MAQUINA_AMBIENTE") == "producao":
-    sys.exit("auth_local.py e so para desenvolvimento.")
+exigir_banco_local(os.environ["MAQUINA_DEV_ADMIN_URL"])
 
 SEGREDO = os.environ["MAQUINA_SUPABASE_JWT_SECRET"]
 EMISSOR = os.environ.get("MAQUINA_SUPABASE_URL", "http://127.0.0.1:9999").rstrip("/") + "/auth/v1"

@@ -23,6 +23,7 @@ from app.config import Configuracoes
 from app.dominio.preco import Parametros, PremissaInvalida
 from app.seguranca.cripto import CifraDeCampo, indice_cego
 from app.servicos.avaliacao import avaliar_preco, avaliar_score
+from dev.guarda import exigir_banco_local
 
 HOJE = date.today()  # noqa: DTZ011 - script local de demonstracao
 SORTE = random.Random(42)  # noqa: S311 - dados ficticios, sem uso criptografico
@@ -108,15 +109,18 @@ def _valor() -> Decimal:
 
 
 def main() -> None:  # noqa: PLR0912, PLR0915 - roteiro linear de carga de dados de demonstracao
-    if os.environ.get("MAQUINA_AMBIENTE") == "producao":
-        sys.exit("semear.py so roda em desenvolvimento.")
     dsn = os.environ["MAQUINA_DEV_ADMIN_URL"]
+    exigir_banco_local(dsn)
     config = Configuracoes()
     cifra = CifraDeCampo(config.chaves_cifra_bytes, config.chave_cifra_ativa)
     chave_indice = config.chave_indice.get_secret_value().encode()
 
     with psycopg.connect(dsn, autocommit=False) as conn:
         c = conn.cursor()
+        c.execute("select count(*) from core.requisicoes")
+        ja_populado = c.fetchone()
+        if ja_populado and ja_populado[0] > 0:
+            sys.exit("Base ja populada. Para recomecar do zero: scripts/dev-ambiente.sh")
         c.execute("alter role maquina_api login password 'dev-maquina-api'")
 
         entes = {}
