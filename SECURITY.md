@@ -24,6 +24,12 @@ O princípio é ter camadas independentes. Se uma falhar (um bug na API, por exe
 | **Negação de serviço** | Limite de corpo (64 KB, inclusive em streaming), `statement_timeout` de 5 s no papel da API, `limit_req` no nginx e `maxmemory` no Redis. | `app/seguranca/http.py`, migração | `test_corpo_em_streaming_tambem_e_limitado` |
 | **Queda do banco** | O pool valida a conexão antes de usar, e uma queda vira 503 (nunca 500 nem dado parcial). | `app/banco/sessao.py` | `test_api_sobrevive_a_conexoes_derrubadas` |
 | **Adulteração da auditoria** | Somente inserção: UPDATE bloqueado por trigger, inclusive para o dono das tabelas; DELETE sem grant. A trilha não guarda segredos (nem cifrados). | migração de segurança | `test_auditoria_so_para_gestao_e_imutavel`, `test_auditoria_nao_guarda_segredos` |
+| **Injeção de prompt num texto do Diário** | O texto da publicação é dado, nunca instrução: vai entre delimitadores que são neutralizados se aparecerem no próprio texto. O modelo não recebe ferramenta nenhuma e só responde num schema fechado. Tudo o que sai é revalidado antes de gravar (CNJ e CPF/CNPJ com dígito verificador, valores, datas, OAB, UF). No pior caso, um campo errado é descartado; nada é executado. | `worker/leitor.py`, `worker/aplicacao.py` | `test_delimitadores_dentro_do_texto_sao_neutralizados`, `test_pedido_isola_o_texto...`, `test_valores_malformados_do_modelo_sao_descartados` |
+| **Conta da IA fora de controle** | Orçamento diário em US$, conferido antes de cada chamada (o estouro máximo é o que já está em voo). Custo calculado de forma conservadora (com fallback, tudo pelo modelo mais caro; modelo desconhecido, pelo maior preço). Chamadas que falham também entram na conta. Recusa e saída cortada não são repetidas; o resto tem backoff e limite de tentativas. Texto longo demais não é enviado nem truncado. | `worker/pipeline.py`, `worker/leitor.py` | `test_orcamento_e_conferido_a_cada_chamada`, `test_orcamento_do_dia_esgotado_nao_chama_a_ia`, `test_resposta_sem_extracao_util_e_cobrada_e_classificada` |
+| **Coletor usado para atacar a rede interna (SSRF)** | O endereço do DJEN só é aceito em HTTPS e num host da lista fechada. O cliente não segue redirecionamento. | `worker/config.py`, `worker/montagem.py` | `test_fora_dos_testes_so_aceita_o_host_oficial_em_https`, `test_resposta_inesperada_falha_sem_seguir_redirecionamento` |
+| **Ser bloqueado pela fonte (ou abusar dela)** | Intervalo mínimo entre requisições, respeito ao `Retry-After`, backoff com jitter e parada imediata no primeiro 403 ou página HTML de verificação (sem tentar contornar). Duas instâncias nunca coletam o mesmo alvo ao mesmo tempo. | `worker/djen.py`, `worker/pipeline.py` | `test_bloqueio_para_na_hora_sem_insistir`, `test_429_respeita_retry_after`, `test_bloqueio_do_djen_interrompe_a_coleta_do_ciclo` |
+| **Dado pessoal vindo das publicações** | O texto integral e a saída da IA (nomes, trechos) ficam em tabelas sem grant para o front. Eventos e requisições, que o radar mostra, nunca recebem nome nem trecho. CPF/CNPJ só cifrado + índice cego. O schema da IA não tem campo de saúde nem de superpreferência. | migração `..._coleta.sql`, `worker/aplicacao.py` | `test_front_nao_le_publicacoes_saida_da_ia_nem_coletas`, `test_grava_o_credito_completo...`, `test_ciclo_do_worker_chega_ao_radar...` |
+| **Um serviço comprometido levar os segredos dos outros** | Papéis de banco separados (`maquina_api` e `maquina_worker`). No compose, cada serviço recebe só as variáveis listadas para ele: a API não vê a chave da Anthropic nem a senha do worker, e o worker não vê os segredos do Auth. | `docker-compose.yml` | revisão do compose (sem `env_file`) |
 
 ## Sobre "clonagem impossível"
 
@@ -48,6 +54,8 @@ Ordenados por impacto:
 - [ ] Rotina de **rotação de chave de cifra**: a API já lê a versão da chave em cada valor.
 - [ ] **Retenção LGPD**: apagar os dados pessoais de leads descartados no prazo configurado.
 - [ ] Quando houver exportação: **marca d'água** e registros canário por tenant.
+- [ ] **Alerta de coleta**: avisar quando `core.coletas` registrar bloqueio ou falhas seguidas, e quando o orçamento do Leitor IA for atingido.
+- [ ] Uma **chave da Anthropic só para o worker**, com limite de gasto no console da Anthropic além do orçamento interno.
 
 ## Como reportar uma vulnerabilidade
 

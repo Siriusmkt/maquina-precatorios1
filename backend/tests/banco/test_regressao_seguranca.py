@@ -80,3 +80,15 @@ def test_views_usam_security_invoker(cenario: Cenario) -> None:
 def test_api_nao_herda_privilegios(cenario: Cenario) -> None:
     linha = cenario.sql("select rolinherit, rolsuper, rolbypassrls from pg_roles where rolname = 'maquina_api'")
     assert linha == [(False, False, False)]
+
+
+def test_front_nao_le_publicacoes_saida_da_ia_nem_coletas(cenario: Cenario) -> None:
+    # Texto integral das publicacoes e saida do Leitor IA (nomes, trechos) ficam so com o worker.
+    linhas = cenario.sql(
+        """select c.relname
+             from pg_class c join pg_namespace n on n.oid = c.relnamespace
+            where n.nspname = 'core' and c.relname in ('publicacoes', 'extracoes_ia', 'coletas')
+              and (has_table_privilege('authenticated', c.oid, 'select, insert, update, delete')
+                   or has_any_column_privilege('authenticated', c.oid, 'select, insert, update'))"""
+    )
+    assert linhas == []

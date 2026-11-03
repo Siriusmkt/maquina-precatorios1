@@ -30,7 +30,8 @@ def _decodificar_chave(valor: str, nome: str) -> bytes:
 
 
 class Configuracoes(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="MAQUINA_", extra="ignore", frozen=True)
+    # Variavel vazia conta como nao definida (o compose repassa "" para as opcionais).
+    model_config = SettingsConfigDict(env_prefix="MAQUINA_", extra="ignore", frozen=True, env_ignore_empty=True)
 
     ambiente: Literal["dev", "teste", "producao"] = "dev"
     nome_servico: str = "maquina-api"

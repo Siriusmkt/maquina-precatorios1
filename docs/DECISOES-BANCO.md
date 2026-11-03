@@ -32,6 +32,14 @@ As migrações ficam em `supabase/migrations/`, e cada regra abaixo tem teste em
 - `check` de formato no número CNJ (20 dígitos), no CNPJ, nos tamanhos de texto livre e nas faixas numéricas.
 - Extensões criadas em `extensions`, como no Supabase, e todas as funções com `search_path = ''`.
 
+## Coleta e Leitor IA (migração `20261103120200_coleta.sql`)
+
+- **A fila mora nas próprias publicações**, não no Redis (que não tem persistência no compose). `triagem`, `sinais`, `tentativas`, `proxima_tentativa_em` (aluguel e backoff) e `erro` dizem em que pé cada uma está. Os workers puxam lotes com `FOR UPDATE SKIP LOCKED`; se um morrer no meio, o aluguel vence e outro retoma.
+- **`core.coletas`** registra cada execução (alvo, páginas, itens vistos e novos, erro). Serve para não repetir um dia já fechado e para observar a coleta. Uma trava consultiva por alvo impede duas coletas iguais ao mesmo tempo.
+- **Idempotência**: `publicacoes.hash_conteudo` é único (a mesma publicação nunca entra duas vezes) e `eventos (publicacao_id, tipo)` também (reprocessar não duplica evento). O status da requisição só avança.
+- **`core.extracoes_ia`** tem uma linha por chamada cobrada, inclusive as que falharam (`saida = {"erro": ...}`). A soma de `custo_usd` do dia é o orçamento do Leitor; por isso há índice em `criado_em`.
+- `core.publicacoes`, `core.extracoes_ia` e `core.coletas` não têm grant para `authenticated`: o texto integral e a saída da IA (com nomes) nunca chegam ao front.
+
 ## Modelo de acesso
 
 ```

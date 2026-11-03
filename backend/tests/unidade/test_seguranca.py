@@ -178,3 +178,13 @@ class TestConfiguracoes:
         config = Configuracoes(**self.base)
         assert config.origens_permitidas == ["https://a.com.br", "https://b.com.br"]
         assert len(config.proxies_confiaveis) == 2
+
+    def test_variavel_vazia_conta_como_nao_definida(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # O compose repassa "" para as opcionais: segredo JWT vazio = modo JWKS, nao um segredo vazio.
+        monkeypatch.setenv("MAQUINA_SUPABASE_JWT_SECRET", "")
+        monkeypatch.setenv("MAQUINA_COOKIE_SEGURO", "")
+        monkeypatch.setenv("MAQUINA_SESSAO_RENOVACAO_DIAS", "")
+        config = Configuracoes(**self.base, ambiente="producao", origens_permitidas=["https://app.exemplo.com.br"])
+        assert config.supabase_jwt_secret is None
+        assert config.cookie_seguro is True
+        assert config.sessao_renovacao_dias == 7

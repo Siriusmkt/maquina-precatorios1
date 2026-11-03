@@ -122,6 +122,7 @@ def main() -> None:  # noqa: PLR0912, PLR0915 - roteiro linear de carga de dados
         if ja_populado and ja_populado[0] > 0:
             sys.exit("Base ja populada. Para recomecar do zero: scripts/dev-ambiente.sh")
         c.execute("alter role maquina_api login password 'dev-maquina-api'")
+        c.execute("alter role maquina_worker login password 'dev-maquina-worker'")
 
         entes = {}
         for nome, esfera, uf, prazo, regime, acordo in [
