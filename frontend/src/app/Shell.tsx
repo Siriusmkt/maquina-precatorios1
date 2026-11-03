@@ -10,6 +10,7 @@ import {
   Menu,
   Radar as IconeRadar,
   Search,
+  Users,
 } from "lucide-react";
 import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
@@ -18,7 +19,7 @@ import { ErroApi, aoPerderSessao, api, renovarSessao } from "@/api/cliente";
 import { usePerfil } from "@/api/consultas";
 import { Fundo, Logo } from "@/componentes/cena";
 import { cn } from "@/lib/cn";
-import { NOMES_PLANO } from "@/lib/formato";
+import { NOMES_PAPEL, NOMES_PLANO } from "@/lib/formato";
 import { CINEMA, mola, transicaoDeRota } from "@/lib/movimento";
 import { PaletaDeComandos } from "./PaletaDeComandos";
 import { Contexto, type ContextoApp, guardarTenant, tenantGuardado } from "./contexto";
@@ -27,15 +28,8 @@ const NAVEGACAO = [
   { para: "/app", rotulo: "Painel", icone: LayoutDashboard, fim: true },
   { para: "/app/radar", rotulo: "Radar", icone: IconeRadar, fim: false },
   { para: "/app/leads", rotulo: "Funil", icone: KanbanSquare, fim: false },
+  { para: "/app/equipe", rotulo: "Equipe", icone: Users, fim: false },
 ];
-
-const PAPEIS: Record<string, string> = {
-  owner: "Dono",
-  gestor: "Gestor",
-  operador: "Operador",
-  juridico: "Jurídico",
-  leitura: "Leitura",
-};
 
 function ItemNav({ para, rotulo, icone: Icone, fim, recolhida }: (typeof NAVEGACAO)[number] & { recolhida: boolean }) {
   return (
@@ -128,7 +122,7 @@ function Lateral({ recolhida, ctx, aoSair, aoRecolher }: { recolhida: boolean; c
             <>
               <p className="truncate text-[13px] font-medium text-tinta-100">{ctx.tenant.nome}</p>
               <p className="mt-0.5 text-[11.5px] text-tinta-500">
-                Plano {NOMES_PLANO[ctx.tenant.plano] ?? ctx.tenant.plano} · {PAPEIS[ctx.tenant.papel] ?? ctx.tenant.papel}
+                Plano {NOMES_PLANO[ctx.tenant.plano] ?? ctx.tenant.plano} · {NOMES_PAPEL[ctx.tenant.papel] ?? ctx.tenant.papel}
               </p>
               {ctx.perfil.tenants.length > 1 && (
                 <select

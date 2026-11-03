@@ -16,7 +16,7 @@ from app.config import Configuracoes
 from app.erros import registrar_tratadores
 from app.logs import configurar_logs
 from app.recursos import Recursos, nomes_cookie
-from app.rotas import basicas, espaco, publico
+from app.rotas import basicas, equipe, espaco, publico
 from app.seguranca.cripto import CifraDeCampo
 from app.seguranca.http import ProtecaoCsrf, SegurancaHttp
 from app.seguranca.jwt import VerificadorJwt
@@ -62,7 +62,12 @@ def criar_app(
             redis=redis,
             limitador=Limitador(redis),
             verificador=verificador,
-            auth=ClienteAuth(http, config.supabase_url, config.supabase_anon_key.get_secret_value()),
+            auth=ClienteAuth(
+                http,
+                config.supabase_url,
+                config.supabase_anon_key.get_secret_value(),
+                config.supabase_service_role_key.get_secret_value() if config.supabase_service_role_key else None,
+            ),
             cifra=CifraDeCampo(config.chaves_cifra_bytes, config.chave_cifra_ativa),
             cookies=cookies,
         )
@@ -85,6 +90,7 @@ def criar_app(
     app.include_router(basicas.router)
     app.include_router(rotas_auth.router)
     app.include_router(espaco.router)
+    app.include_router(equipe.router)
     app.include_router(publico.router)
 
     # Ordem: o ultimo adicionado e o mais externo.

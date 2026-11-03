@@ -38,6 +38,23 @@ export function reaisCompactoPreciso(valor: string | number | null | undefined):
 
 export const NOMES_PLANO: Record<string, string> = { radar: "Radar", operacao: "Operação", fundo: "Fundo" };
 
+export const NOMES_PAPEL: Record<string, string> = {
+  owner: "Dono",
+  gestor: "Gestor",
+  operador: "Operador",
+  juridico: "Jurídico",
+  leitura: "Leitura",
+};
+
+/** O que cada papel pode fazer (o banco garante; aqui so explica). */
+export const DESCRICAO_PAPEL: Record<string, string> = {
+  owner: "Tudo, inclusive a alçada de aprovação e quem é dono.",
+  gestor: "Aprova propostas na alçada, cuida da equipe e das premissas.",
+  operador: "Assume leads, fala com credores e cria propostas.",
+  juridico: "Documentos, cessão e conclusão do negócio.",
+  leitura: "Só consulta: não altera nada.",
+};
+
 /** Numero pseudo-aleatorio estavel em [0, 1) a partir de um texto (posicoes de blips). */
 export function sorteioEstavel(texto: string): number {
   let h = 2166136261;
@@ -83,10 +100,10 @@ export function relativo(iso: string | null | undefined, agora = Date.now()): st
   return "—";
 }
 
-/** CNPJ "11222333000181" -> "11.222.333/0001-81". */
+/** CNPJ "11222333000181" -> "11.222.333/0001-81"; o alfanumerico (desde jul/2026) tambem: "12.ABC.345/01DE-35". */
 export function cnpj(valor: string | null | undefined): string {
-  const d = (valor ?? "").replace(/\D/g, "");
-  if (d.length !== 14) return valor ?? "—";
+  const d = (valor ?? "").toUpperCase().replace(/[^0-9A-Z]/g, "");
+  if (!/^[0-9A-Z]{12}[0-9]{2}$/.test(d)) return valor ?? "—";
   return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
 }
 

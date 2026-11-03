@@ -10,6 +10,9 @@ Ajuste as variáveis do serviço de Auth (GoTrue) e do PostgREST:
 | `GOTRUE_JWT_EXP` | `900` | Access token de 15 minutos. O front renova sozinho. |
 | `GOTRUE_SECURITY_REFRESH_TOKEN_ROTATION_ENABLED` | `true` | Refresh token de uso único; reuso derruba a sessão. |
 | `PGRST_DB_SCHEMAS` | sem `core` e sem `app` | Os dados só saem pela API, nunca pelo PostgREST. |
+| `GOTRUE_SITE_URL` | `https://app.seu-dominio.com.br` | Endereço do app nos e-mails do Auth. |
+| `GOTRUE_URI_ALLOW_LIST` | `https://app.seu-dominio.com.br/definir-senha` | Único destino aceito nos links de convite e de nova senha. |
+| `GOTRUE_SMTP_*` | servidor de e-mail da empresa | Sem SMTP o Auth não envia convite nem "esqueci a senha". |
 
 Se o GraphQL não for usado, deixe o `pg_graphql` desativado.
 
@@ -28,10 +31,10 @@ alter role maquina_api    login password '<gere com secrets.token_urlsafe(48)>';
 alter role maquina_worker login password '<outra senha>';
 ```
 
-Enquanto a tela de convites não existe, a equipe do cliente é cadastrada assim:
+O primeiro dono de cada cliente é cadastrado uma vez, à mão; o resto da equipe ele mesmo convida pela tela **Equipe** (o convite chega por e-mail e a pessoa define a senha no próprio app).
 
-1. Convide o usuário pelo Supabase Studio (Authentication → Invite).
-2. Vincule o usuário ao tenant:
+1. Convide o primeiro dono pelo Supabase Studio (Authentication → Invite).
+2. Crie o cliente e vincule o dono:
 
 ```sql
 insert into app.tenants (nome, cnpj, plano, tribunais_permitidos, assentos, limite_leads_mes, limite_radar_dia, config)
@@ -40,6 +43,8 @@ values ('Cliente', '00000000000000', 'operacao', array['TJSP','TRF3'], 5, 200, 5
 insert into app.membros (tenant_id, user_id, papel, nome_publico)
 values ('<tenant>', '<id do auth.users>', 'owner', 'Nome, equipe de aquisição');
 ```
+
+Plano, assentos, tribunais e cotas continuam sendo da operação do SaaS (SQL). Premissas de preço, alçada do gestor e o aviso da página do credor o próprio cliente ajusta na tela **Equipe**.
 
 ## 3. Aplicação no Easypanel
 

@@ -27,6 +27,14 @@ class AuthIndisponivel(Exception):
     pass
 
 
+class JaRegistrado(Exception):
+    """O e-mail ja tem conta no Auth (corrida entre dois convites)."""
+
+
+class SenhaRecusada(Exception):
+    """O Auth recusou a senha nova (fraca ou igual a anterior)."""
+
+
 @dataclass(frozen=True)
 class SessaoAuth:
     access_token: str
@@ -35,10 +43,26 @@ class SessaoAuth:
 
 
 class ClienteAuth:
-    def __init__(self, http: httpx.AsyncClient, url_base: str, anon_key: str) -> None:
+    def __init__(self, http: httpx.AsyncClient, url_base: str, anon_key: str, chave_servico: str | None = None) -> None:
         self._http = http
         self._url = f"{url_base}/auth/v1"
         self._cabecalhos = {"apikey": anon_key, "content-type": "application/json"}
+        # Chave de servico so nas chamadas administrativas (convite). Nunca sai do servidor.
+        self._servico = (
+            {"apikey": chave_servico, "authorization": f"Bearer {chave_servico}", "content-type": "application/json"}
+            if chave_servico
+            else None
+        )
+
+    @property
+    def convites_ligados(self) -> bool:
+        return self._servico is not None
+
+    async def _post(self, caminho: str, **kwargs: Any) -> httpx.Response:
+        try:
+            return await self._http.post(f"{self._url}{caminho}", **kwargs)
+        except httpx.HTTPError as exc:
+            raise AuthIndisponivel from exc
 
     async def _token(self, grant_type: str, corpo: dict[str, str]) -> SessaoAuth:
         try:
@@ -82,3 +106,49 @@ class ClienteAuth:
             )
         except httpx.HTTPError:
             log.warning("falha ao revogar sessao no auth")
+
+    async def convidar(self, email: str, redirecionar_para: str | None) -> str:
+        """Cria a conta e envia o e-mail de convite. Devolve o id do usuario."""
+        if self._servico is None:
+            raise AuthIndisponivel("chave de servico nao configurada")
+        params = {"redirect_to": redirecionar_para} if redirecionar_para else None
+        resposta = await self._post("/invite", params=params, json={"email": email}, headers=self._servico)
+        if resposta.status_code == 429:
+            raise AuthLimitado
+        if resposta.status_code == 422:
+            raise JaRegistrado
+        if resposta.status_code != 200:
+            log.warning("auth recusou o convite", extra={"status": resposta.status_code})
+            raise AuthIndisponivel
+        try:
+            return str(resposta.json()["id"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise AuthIndisponivel from exc
+
+    async def recuperar_senha(self, email: str, redirecionar_para: str | None) -> None:
+        """Pede o e-mail de redefinicao. O resultado nunca e revelado a quem pediu."""
+        params = {"redirect_to": redirecionar_para} if redirecionar_para else None
+        resposta = await self._post("/recover", params=params, json={"email": email}, headers=self._cabecalhos)
+        if resposta.status_code == 429:
+            raise AuthLimitado
+        if resposta.status_code >= 500:
+            raise AuthIndisponivel
+
+    async def definir_senha(self, access_token: str, senha: str) -> None:
+        """Troca a senha com o token do link de convite/redefinicao."""
+        try:
+            resposta = await self._http.put(
+                f"{self._url}/user",
+                json={"password": senha},
+                headers={**self._cabecalhos, "authorization": f"Bearer {access_token}"},
+            )
+        except httpx.HTTPError as exc:
+            raise AuthIndisponivel from exc
+        if resposta.status_code == 429:
+            raise AuthLimitado
+        if resposta.status_code in (401, 403):
+            raise CredenciaisInvalidas
+        if resposta.status_code in (400, 422):
+            raise SenhaRecusada
+        if resposta.status_code != 200:
+            raise AuthIndisponivel

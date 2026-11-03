@@ -18,6 +18,11 @@ FUNCOES_DO_USUARIO = {
     "revogar_verificacao",
     "revelar_contato",
     "consultar_verificacao",
+    "equipe",
+    "adicionar_membro",
+    "alterar_membro",
+    "remover_membro",
+    "atualizar_preferencias",
 }
 
 

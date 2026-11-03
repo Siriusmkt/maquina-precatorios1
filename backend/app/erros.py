@@ -52,6 +52,14 @@ MENSAGENS: dict[str, str] = {
     "orcamento_radar_esgotado": "Limite diário de consultas ao radar atingido.",
     "estagio_invalido": "Mudança de estágio não permitida.",
     "motivo_obrigatorio": "Informe o motivo da perda.",
+    # Equipe e preferencias
+    "ja_e_membro": "Essa pessoa já faz parte da equipe.",
+    "membro_nao_encontrado": "Essa pessoa não faz parte da equipe.",
+    "ultimo_owner": "A equipe precisa de pelo menos um dono. Promova outra pessoa antes.",
+    "preferencia_invalida": "Valor fora da faixa permitida.",
+    "convites_indisponiveis": "Convites desligados: falta configurar a chave de serviço do Supabase.",
+    "link_invalido": "Este link expirou ou já foi usado. Peça um novo.",
+    "senha_fraca": "Use uma senha com pelo menos 10 caracteres, misturando letras e números.",
 }
 
 _STATUS_NEGOCIO = {"MQ403": 403, "MQ404": 404, "MQ409": 409, "MQ422": 422, "MQ429": 429}

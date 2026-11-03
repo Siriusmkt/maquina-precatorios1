@@ -40,9 +40,13 @@ export MAQUINA_CHAVE_INDICE='$CHAVE_INDICE'
 EOF
   echo "Criado $ARQ_ENV"
 fi
-# Worker (coleta + Leitor IA): acrescentado tambem em arquivos gerados antes dele existir.
+# Variaveis que surgiram depois: acrescentadas tambem em arquivos gerados antes delas.
 if ! grep -q MAQUINA_WORKER_DATABASE_URL "$ARQ_ENV"; then
   echo "export MAQUINA_WORKER_DATABASE_URL=${URL_SERVIDOR%/postgres}/maquina_dev?user=maquina_worker" >> "$ARQ_ENV"
+fi
+if ! grep -q MAQUINA_SUPABASE_SERVICE_ROLE_KEY "$ARQ_ENV"; then
+  echo "export MAQUINA_SUPABASE_SERVICE_ROLE_KEY='$(python3 -c 'import secrets;print(secrets.token_urlsafe(32))')'" >> "$ARQ_ENV"
+  echo "export MAQUINA_URL_PUBLICA=http://localhost:5173" >> "$ARQ_ENV"
 fi
 
 # shellcheck disable=SC1090

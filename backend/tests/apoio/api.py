@@ -10,7 +10,7 @@ import socket
 import subprocess
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from typing import Any
@@ -26,6 +26,8 @@ URL_AUTH = "https://auth.teste.local"
 EMISSOR = f"{URL_AUTH}/auth/v1"
 ORIGEM = "https://app.teste.local"
 CHAVE_CIFRA = base64.b64encode(b"k" * 32).decode()
+CHAVE_SERVICO = "chave-servico-de-teste"
+URL_PUBLICA = "https://app.teste.local"
 
 
 def config_de_teste(banco: BancoDeTeste, redis_url: str, **extra: Any) -> Configuracoes:
@@ -42,6 +44,8 @@ def config_de_teste(banco: BancoDeTeste, redis_url: str, **extra: Any) -> Config
         "chaves_cifra": {1: CHAVE_CIFRA},
         "chave_cifra_ativa": 1,
         "chave_indice": "i" * 40,
+        "supabase_service_role_key": CHAVE_SERVICO,
+        "url_publica": URL_PUBLICA,
     }
     valores.update(extra)
     return Configuracoes(**valores)
@@ -75,6 +79,10 @@ class GoTrueFalso:
     chamadas: list[str] = field(default_factory=list)
     status_forcado: int | None = None
     fora_do_ar: bool = False
+    # Convite cria a conta de verdade no banco de teste (o Auth real grava em auth.users).
+    criar_conta: Callable[[str], uuid.UUID] | None = None
+    convites: list[tuple[str, str | None]] = field(default_factory=list)
+    recuperacoes: list[tuple[str, str | None]] = field(default_factory=list)
 
     def cadastrar(self, usuario: uuid.UUID, email: str, senha: str) -> None:
         self.usuarios[email] = (usuario, senha)
@@ -103,6 +111,36 @@ class GoTrueFalso:
                 return self._sessao(usuario, "renovado@teste.local")
         return httpx.Response(400, json={"error": "invalid_grant"})
 
+    def _convite(self, requisicao: httpx.Request) -> httpx.Response:
+        servico = requisicao.headers.get("authorization") == f"Bearer {CHAVE_SERVICO}"
+        if requisicao.headers.get("apikey") != CHAVE_SERVICO or not servico:
+            return httpx.Response(401, json={"error": "nao_autorizado"})
+        email = json.loads(requisicao.content)["email"]
+        if email in self.usuarios or self.criar_conta is None:
+            return httpx.Response(422, json={"error_code": "email_exists"})
+        usuario = self.criar_conta(email)
+        self.usuarios[email] = (usuario, secrets.token_urlsafe(16))
+        self.convites.append((email, requisicao.url.params.get("redirect_to")))
+        return httpx.Response(200, json={"id": str(usuario), "email": email})
+
+    def _recuperar(self, requisicao: httpx.Request) -> httpx.Response:
+        email = json.loads(requisicao.content)["email"]
+        self.recuperacoes.append((email, requisicao.url.params.get("redirect_to")))
+        return httpx.Response(200, json={})
+
+    def _trocar_senha(self, requisicao: httpx.Request) -> httpx.Response:
+        token = requisicao.headers.get("authorization", "").removeprefix("Bearer ")
+        try:
+            claims = jwt.decode(token, SEGREDO_JWT, algorithms=["HS256"], audience="authenticated")
+        except jwt.PyJWTError:
+            return httpx.Response(401, json={"error": "token"})
+        senha = json.loads(requisicao.content)["password"]
+        for email, (usuario, _) in list(self.usuarios.items()):
+            if str(usuario) == claims["sub"]:
+                self.usuarios[email] = (usuario, senha)
+                return httpx.Response(200, json={"id": str(usuario)})
+        return httpx.Response(404)
+
     def __call__(self, requisicao: httpx.Request) -> httpx.Response:
         caminho = requisicao.url.path
         self.chamadas.append(caminho)
@@ -110,9 +148,16 @@ class GoTrueFalso:
             raise httpx.ConnectError("auth fora do ar", request=requisicao)
         if self.status_forcado:
             return httpx.Response(self.status_forcado, json={"error": "forcado"})
+        if caminho == "/auth/v1/invite":
+            return self._convite(requisicao)
         if requisicao.headers.get("apikey") != "chave-anon-de-teste":
             return httpx.Response(401, json={"error": "apikey"})
-        rotas = {"/auth/v1/token": self._token, "/auth/v1/logout": lambda _: httpx.Response(204)}
+        rotas = {
+            "/auth/v1/token": self._token,
+            "/auth/v1/logout": lambda _: httpx.Response(204),
+            "/auth/v1/recover": self._recuperar,
+            "/auth/v1/user": self._trocar_senha,
+        }
         return rotas.get(caminho, lambda _: httpx.Response(404))(requisicao)
 
 

@@ -8,7 +8,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, SecretStr
 
-from app.auth.gotrue import AuthIndisponivel, AuthLimitado, CredenciaisInvalidas
+from app.auth.gotrue import AuthIndisponivel, AuthLimitado, CredenciaisInvalidas, SenhaRecusada
 from app.auth.sessao import (
     Rec,
     gravar_csrf,
@@ -22,7 +22,14 @@ from app.erros import ErroApi, resposta_problema
 from app.recursos import aplicar_limite, contexto
 from app.seguranca.cripto import normalizar_email
 from app.seguranca.jwt import Identidade, TokenInvalido
-from app.seguranca.limite import LOGIN_POR_EMAIL, LOGIN_POR_IP, RENOVACAO_POR_IP
+from app.seguranca.limite import (
+    DEFINIR_SENHA_POR_IP,
+    LOGIN_POR_EMAIL,
+    LOGIN_POR_IP,
+    RECUPERAR_POR_EMAIL,
+    RECUPERAR_POR_IP,
+    RENOVACAO_POR_IP,
+)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -40,6 +47,26 @@ class Credenciais(BaseModel):
 
 class RespostaCsrf(BaseModel):
     csrf: str
+
+
+class PedidoRecuperacao(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    email: str = Field(min_length=3, max_length=254, pattern=_EMAIL.pattern)
+
+
+class NovaSenha(BaseModel):
+    """Vem da pagina /definir-senha: o token do link (convite ou redefinicao) e a senha escolhida."""
+
+    model_config = ConfigDict(extra="forbid")
+    access_token: SecretStr = Field(min_length=20, max_length=4096)
+    senha: SecretStr = Field(min_length=1, max_length=128)
+
+
+def senha_forte(senha: str) -> bool:
+    """10+ caracteres, com letra e numero, e nao um unico caractere repetido."""
+    return (
+        len(senha) >= 10 and any(c.isalpha() for c in senha) and any(c.isdigit() for c in senha) and len(set(senha)) > 3
+    )
 
 
 @router.get("/csrf")
@@ -112,3 +139,61 @@ async def sair(request: Request, response: Response, rec: Rec) -> None:
 @router.get("/sessao", status_code=204)
 async def sessao_valida(_: Annotated[Identidade, Depends(identidade_atual)]) -> None:
     """Usada pelo nginx (auth_request) para liberar os assets do app so a quem esta logado."""
+
+
+@router.post("/recuperar", status_code=204)
+async def recuperar(dados: PedidoRecuperacao, request: Request, rec: Rec) -> None:
+    """Envia o link de redefinicao. Sempre 204: nao revela se o e-mail tem conta."""
+    email = normalizar_email(dados.email)
+    await aplicar_limite(rec, RECUPERAR_POR_IP, contexto(request).ip)
+    await aplicar_limite(rec, RECUPERAR_POR_EMAIL, email)
+    destino = f"{rec.config.url_publica}/definir-senha" if rec.config.url_publica else None
+    try:
+        await rec.auth.recuperar_senha(email, destino)
+    except AuthLimitado as exc:
+        raise ErroApi(429, "limite_excedido", cabecalhos={"Retry-After": "60"}) from exc
+    except AuthIndisponivel as exc:
+        raise ErroApi(503, "servico_indisponivel") from exc
+
+
+@router.post("/definir-senha")
+async def definir_senha(dados: NovaSenha, request: Request, response: Response, rec: Rec) -> Perfil:
+    """Primeiro acesso (convite) ou redefinicao: grava a senha e ja entra."""
+    ctx = contexto(request)
+    await aplicar_limite(rec, DEFINIR_SENHA_POR_IP, ctx.ip)
+    senha = dados.senha.get_secret_value()
+    if not senha_forte(senha):
+        raise ErroApi(422, "senha_fraca")
+    token = dados.access_token.get_secret_value()
+    try:
+        identidade = await rec.verificador.verificar(token)
+    except TokenInvalido as exc:
+        raise ErroApi(401, "link_invalido") from exc
+    if not identidade.email:
+        raise ErroApi(401, "link_invalido")
+    # Token de sessao comum (login com senha) nao serve: so o que veio do link do e-mail.
+    metodos = {m.get("method") for m in identidade.claims.get("amr") or [] if isinstance(m, dict)}
+    if metodos and metodos <= {"password", "token_refresh"}:
+        raise ErroApi(401, "link_invalido")
+
+    try:
+        await rec.auth.definir_senha(token, senha)
+        sessao = await rec.auth.entrar(identidade.email, senha)
+    except CredenciaisInvalidas as exc:
+        raise ErroApi(401, "link_invalido") from exc
+    except SenhaRecusada as exc:
+        raise ErroApi(422, "senha_fraca") from exc
+    except AuthLimitado as exc:
+        raise ErroApi(429, "limite_excedido", cabecalhos={"Retry-After": "60"}) from exc
+    except AuthIndisponivel as exc:
+        raise ErroApi(503, "servico_indisponivel") from exc
+
+    try:
+        nova = await rec.verificador.verificar(sessao.access_token)
+    except TokenInvalido as exc:
+        raise ErroApi(503, "servico_indisponivel") from exc
+    async with rec.banco.como_usuario(nova, ctx) as conn:
+        perfil = await carregar_perfil(conn, nova.usuario_id, nova.email, nova.aal)
+    gravar_sessao(response, rec, sessao)
+    gravar_csrf(response, rec, novo_token_csrf())
+    return perfil

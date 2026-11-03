@@ -50,6 +50,11 @@ class Configuracoes(BaseSettings):
     supabase_anon_key: SecretStr
     # HS256 (Supabase self-hosted). Vazio = chaves assimetricas via JWKS (Supabase Cloud).
     supabase_jwt_secret: SecretStr | None = None
+    # Chave de servico: SO para convidar pessoas (Auth admin). Vazio = convites desligados.
+    supabase_service_role_key: SecretStr | None = None
+
+    # Endereco publico do app (links de convite, QR code das cartas e propostas).
+    url_publica: str | None = None
     jwt_audiencia: str = "authenticated"
     jwt_tolerancia_segundos: int = 10
 
@@ -84,10 +89,10 @@ class Configuracoes(BaseSettings):
             return [ip_network(r.strip(), strict=False) for r in valor.split(",") if r.strip()]
         return valor
 
-    @field_validator("supabase_url")
+    @field_validator("supabase_url", "url_publica")
     @classmethod
-    def _sem_barra_final(cls, valor: str) -> str:
-        return valor.rstrip("/")
+    def _sem_barra_final(cls, valor: str | None) -> str | None:
+        return valor.rstrip("/") if valor else valor
 
     @model_validator(mode="after")
     def _validar(self) -> Configuracoes:
@@ -108,6 +113,8 @@ class Configuracoes(BaseSettings):
                 problemas.append("origens_permitidas deve usar https")
             if not self.supabase_url.startswith("https://"):
                 problemas.append("supabase_url deve usar https")
+            if self.url_publica and not self.url_publica.startswith("https://"):
+                problemas.append("url_publica deve usar https")
             segredo = self.supabase_jwt_secret
             if segredo is not None and len(segredo.get_secret_value()) < 32:
                 problemas.append("supabase_jwt_secret curto demais")

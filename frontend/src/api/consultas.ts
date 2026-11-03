@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-query";
 import { api } from "./cliente";
 import type {
+  Equipe,
   Estagio,
   FiltrosRadar,
   LeadDetalhe,
@@ -16,6 +17,7 @@ import type {
   PaginaRadar,
   Perfil,
   Precificacao,
+  Preferencias,
   ResumoRadar,
   VerificacaoPublica,
 } from "./tipos";
@@ -27,6 +29,8 @@ export const chaves = {
   painel: (t: string) => ["painel", t] as const,
   leads: (t: string) => ["leads", t] as const,
   lead: (t: string, id: string) => ["lead", t, id] as const,
+  equipe: (t: string) => ["equipe", t] as const,
+  preferencias: (t: string) => ["preferencias", t] as const,
 };
 
 function consulta(filtros: FiltrosRadar, cursor?: string): string {
@@ -152,4 +156,65 @@ export function useRegistrarInteracao(tenant: string, lead: string) {
 
 export function verificarCodigo(codigo: string): Promise<VerificacaoPublica> {
   return api<VerificacaoPublica>("/publico/verificacao", { metodo: "POST", corpo: { codigo }, semRenovar: true });
+}
+
+// ------------------------------------------------------------------ equipe e preferencias
+export function useEquipe(tenant: string) {
+  return useQuery({ queryKey: chaves.equipe(tenant), queryFn: () => api<Equipe>(`/t/${tenant}/equipe`) });
+}
+
+function useInvalidarEquipe(tenant: string) {
+  const cliente = useQueryClient();
+  return () => void cliente.invalidateQueries({ queryKey: chaves.equipe(tenant) });
+}
+
+export function useConvidar(tenant: string) {
+  const invalidar = useInvalidarEquipe(tenant);
+  return useMutation({
+    mutationFn: (v: { email: string; papel: string; nome_publico?: string }) =>
+      api<{ user_id: string }>(`/t/${tenant}/equipe`, { metodo: "POST", corpo: v }),
+    onSuccess: invalidar,
+  });
+}
+
+export function useAlterarMembro(tenant: string) {
+  const invalidar = useInvalidarEquipe(tenant);
+  return useMutation({
+    mutationFn: (v: { user_id: string; papel?: string; nome_publico?: string }) =>
+      api<void>(`/t/${tenant}/equipe/${v.user_id}`, {
+        metodo: "PATCH",
+        corpo: { papel: v.papel, nome_publico: v.nome_publico },
+      }),
+    onSuccess: invalidar,
+  });
+}
+
+export function useRemoverMembro(tenant: string) {
+  const invalidar = useInvalidarEquipe(tenant);
+  return useMutation({
+    mutationFn: (userId: string) => api<void>(`/t/${tenant}/equipe/${userId}`, { metodo: "DELETE" }),
+    onSuccess: invalidar,
+  });
+}
+
+export function usePreferencias(tenant: string) {
+  return useQuery({ queryKey: chaves.preferencias(tenant), queryFn: () => api<Preferencias>(`/t/${tenant}/preferencias`) });
+}
+
+export function useSalvarPreferencias(tenant: string) {
+  const cliente = useQueryClient();
+  return useMutation({
+    mutationFn: (valores: Record<string, string | number | null>) =>
+      api<Preferencias>(`/t/${tenant}/preferencias`, { metodo: "PATCH", corpo: valores }),
+    onSuccess: (dados) => cliente.setQueryData(chaves.preferencias(tenant), dados),
+  });
+}
+
+// ------------------------------------------------------------------ senha (paginas publicas)
+export function pedirNovaSenha(email: string) {
+  return api<void>("/auth/recuperar", { metodo: "POST", corpo: { email }, semRenovar: true });
+}
+
+export function definirSenha(accessToken: string, senha: string) {
+  return api<Perfil>("/auth/definir-senha", { metodo: "POST", corpo: { access_token: accessToken, senha }, semRenovar: true });
 }

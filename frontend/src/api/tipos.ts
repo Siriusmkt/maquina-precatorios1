@@ -253,3 +253,35 @@ export interface VerificacaoPublica {
   oferta?: { valor: string; valida_ate: string | null; enviada_em: string | null } | null;
   aviso?: string;
 }
+
+export interface Membro {
+  user_id: string;
+  email: string;
+  papel: Papel;
+  nome_publico: string | null;
+  criado_em: string;
+  ultimo_acesso_em: string | null;
+  convite_pendente: boolean;
+  sou_eu: boolean;
+}
+
+export interface Equipe {
+  membros: Membro[];
+  assentos: number;
+  meu_papel: Papel;
+}
+
+/** Taxas em fracao ("0.22" = 22% a.a.), como a API guarda; a tela mostra em %. */
+export interface Preferencias {
+  taxa_alvo_aa: string;
+  tir_minima_aa: string;
+  ipca_aa: string;
+  juros_aa: string;
+  aliquota_ir: string;
+  prazo_padrao_meses: number;
+  alcada_gestor_desagio_min: string | null;
+  nao_cobramos_texto: string;
+  personalizadas: string[];
+  pode_editar: boolean;
+  pode_editar_alcada: boolean;
+}

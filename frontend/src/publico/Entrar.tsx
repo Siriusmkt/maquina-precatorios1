@@ -9,7 +9,7 @@ import { AnimatePresence, motion, useAnimationControls } from "motion/react";
 import { type FormEvent, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { ErroApi, api, esquecerCsrf } from "@/api/cliente";
-import { chaves } from "@/api/consultas";
+import { chaves, pedirNovaSenha } from "@/api/consultas";
 import type { Perfil } from "@/api/tipos";
 import { Botao, Campo } from "@/componentes/base";
 import { Fundo, Logo } from "@/componentes/cena";
@@ -51,6 +51,8 @@ export function Entrar() {
   const [erro, setErro] = useState<string | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [iris, setIris] = useState<{ x: number; y: number } | null>(null);
+  const [recuperando, setRecuperando] = useState(false);
+  const [pedido, setPedido] = useState<"nada" | "enviando" | "enviado">("nada");
   const cartao = useAnimationControls();
   const botaoRef = useRef<HTMLDivElement>(null);
   const blips = useMemo(blipsDeDemonstracao, []);
@@ -70,6 +72,18 @@ export function Entrar() {
       setEnviando(false);
       setErro(falha instanceof ErroApi ? falha.titulo : "Não foi possível entrar agora.");
       void cartao.start({ x: [0, -12, 10, -6, 4, 0], transition: { duration: 0.5 } });
+    }
+  }
+
+  async function pedirLink(e: FormEvent) {
+    e.preventDefault();
+    setPedido("enviando");
+    try {
+      esquecerCsrf();
+      await pedirNovaSenha(email);
+    } finally {
+      // Mesma resposta exista ou nao a conta: a tela nao confirma e-mails.
+      setPedido("enviado");
     }
   }
 
@@ -138,70 +152,130 @@ export function Entrar() {
           transition={{ duration: 1.1, delay: 0.5, ease: CINEMA }}
           className="w-full max-w-md justify-self-center lg:justify-self-end"
         >
-          <motion.form
-            animate={cartao}
-            onSubmit={enviar}
-            className="vidro borda-viva rounded-[28px] p-7 sm:p-9"
-            noValidate
-          >
-            <h2 className="text-2xl font-semibold tracking-tight">Entrar</h2>
-            <p className="mt-1.5 text-sm text-tinta-400">Acesso restrito a membros convidados.</p>
+          <AnimatePresence mode="wait" initial={false}>
+            {recuperando ? (
+            <motion.form
+              key="recuperar"
+              onSubmit={pedirLink}
+              noValidate
+              initial={{ opacity: 0, rotateY: -12, filter: "blur(8px)" }}
+              animate={{ opacity: 1, rotateY: 0, filter: "blur(0px)" }}
+              exit={{ opacity: 0, rotateY: 12, filter: "blur(8px)" }}
+              transition={{ duration: 0.5, ease: CINEMA }}
+              className="vidro borda-viva rounded-[28px] p-7 sm:p-9"
+            >
+              <h2 className="text-2xl font-semibold tracking-tight">Nova senha</h2>
+              <p className="mt-1.5 text-sm text-tinta-400">Mandamos um link para você escolher a senha nova.</p>
+              {pedido === "enviado" ? (
+                <p className="mt-8 rounded-2xl bg-menta-400/10 p-4 text-[14px] leading-relaxed text-menta-200">
+                  Se esse e-mail tiver conta, o link chega em instantes. Confira também o spam.
+                </p>
+                ) : (
+                    <>
+                      <Campo
+                        rotulo="E-mail"
+                        type="email"
+                        autoComplete="username"
+                        inputMode="email"
+                        className="mt-8"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        icone={<Mail className="size-4" />}
+                      />
+                      <Botao type="submit" tamanho="g" className="mt-6 w-full" carregando={pedido === "enviando"} disabled={!email}>
+                        Enviar link
+                      </Botao>
+                    </>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecuperando(false);
+                      setPedido("nada");
+                    }}
+                    className="mt-6 text-[13px] text-menta-400 hover:text-menta-300"
+                  >
+                    Voltar ao login
+                  </button>
+                </motion.form>
+              ) : (
+              <motion.form
+                key="entrar"
+                animate={cartao}
+                onSubmit={enviar}
+                exit={{ opacity: 0, rotateY: 12, filter: "blur(8px)" }}
+                transition={{ duration: 0.5, ease: CINEMA }}
+                className="vidro borda-viva rounded-[28px] p-7 sm:p-9"
+                noValidate
+              >
+                <h2 className="text-2xl font-semibold tracking-tight">Entrar</h2>
+                <p className="mt-1.5 text-sm text-tinta-400">Acesso restrito a membros convidados.</p>
 
-            <div className="mt-8 space-y-4">
-              <Campo
-                rotulo="E-mail"
-                type="email"
-                autoComplete="username"
-                inputMode="email"
-                required
-                maxLength={254}
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                icone={<Mail className="size-4" />}
-              />
-              <div className="relative">
-                <Campo
-                  rotulo="Senha"
-                  type={verSenha ? "text" : "password"}
-                  autoComplete="current-password"
-                  required
-                  maxLength={256}
-                  value={senha}
-                  onChange={(e) => setSenha(e.target.value)}
-                  icone={<Lock className="size-4" />}
-                  erro={erro}
-                />
+                <div className="mt-8 space-y-4">
+                  <Campo
+                    rotulo="E-mail"
+                    type="email"
+                    autoComplete="username"
+                    inputMode="email"
+                    required
+                    maxLength={254}
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    icone={<Mail className="size-4" />}
+                  />
+                  <div className="relative">
+                    <Campo
+                      rotulo="Senha"
+                      type={verSenha ? "text" : "password"}
+                      autoComplete="current-password"
+                      required
+                      maxLength={256}
+                      value={senha}
+                      onChange={(e) => setSenha(e.target.value)}
+                      icone={<Lock className="size-4" />}
+                      erro={erro}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setVerSenha((v) => !v)}
+                      className="absolute right-3 top-[28px] -translate-y-1/2 rounded-lg p-2 text-tinta-500 hover:text-tinta-100"
+                      aria-label={verSenha ? "Ocultar senha" : "Mostrar senha"}
+                    >
+                      {verSenha ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div ref={botaoRef} className="mt-7">
+                  <Botao
+                    type="submit"
+                    tamanho="g"
+                    magnetico
+                    carregando={enviando}
+                    className="w-full"
+                    disabled={!email || !senha}
+                  >
+                    Entrar
+                    <ArrowRight className="size-4 transition-transform duration-300 group-hover:translate-x-1" />
+                  </Botao>
+                </div>
+
                 <button
                   type="button"
-                  onClick={() => setVerSenha((v) => !v)}
-                  className="absolute right-3 top-[28px] -translate-y-1/2 rounded-lg p-2 text-tinta-500 hover:text-tinta-100"
-                  aria-label={verSenha ? "Ocultar senha" : "Mostrar senha"}
+                  onClick={() => setRecuperando(true)}
+                  className="mt-4 w-full text-center text-[13px] text-tinta-400 transition hover:text-menta-300"
                 >
-                  {verSenha ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+                  Esqueci minha senha
                 </button>
-              </div>
-            </div>
 
-            <div ref={botaoRef} className="mt-7">
-              <Botao
-                type="submit"
-                tamanho="g"
-                magnetico
-                carregando={enviando}
-                className="w-full"
-                disabled={!email || !senha}
-              >
-                Entrar
-                <ArrowRight className="size-4 transition-transform duration-300 group-hover:translate-x-1" />
-              </Botao>
-            </div>
-
-            <p className="mt-6 flex items-start gap-2 text-[12.5px] leading-relaxed text-tinta-500">
-              <ShieldCheck className="mt-0.5 size-4 shrink-0 text-menta-500" />
-              Sessão em cookie protegido, verificação de origem e limite de tentativas. Nenhum token fica exposto no
-              navegador.
-            </p>
-          </motion.form>
+                <p className="mt-5 flex items-start gap-2 text-[12.5px] leading-relaxed text-tinta-500">
+                  <ShieldCheck className="mt-0.5 size-4 shrink-0 text-menta-500" />
+                  Sessão em cookie protegido, verificação de origem e limite de tentativas. Nenhum token fica exposto no
+                  navegador.
+                </p>
+              </motion.form>
+            )}
+          </AnimatePresence>
         </motion.section>
       </div>
 
