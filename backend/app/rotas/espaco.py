@@ -411,6 +411,12 @@ async def criar_proposta(
             "recebimento_esperado": str(preco.recebimento_esperado),
             "piso_acordo": str(preco.piso_acordo) if preco.piso_acordo is not None else None,
             "preco_sugerido": str(preco.preco_sugerido) if preco.preco_sugerido is not None else None,
+            # Visao do credor, para o PDF comparar vender hoje x esperar x acordo com os numeros da epoca.
+            "aliquota_ir": str(parametros.aliquota_ir),
+            "esperar_valor": str(preco.credor.esperar_valor),
+            "data_pagamento_esperada": preco.data_pagamento_esperada.isoformat(),
+            "acordo_valor": str(preco.credor.acordo_valor) if preco.credor.acordo_valor is not None else None,
+            "acordo_meses": str(preco.credor.acordo_meses) if preco.credor.acordo_meses is not None else None,
         }
         cursor = await conn.execute(
             """insert into app.propostas (tenant_id, lead_id, valor_atualizado, valor_oferta, ir_estimado, premissas,

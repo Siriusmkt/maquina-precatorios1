@@ -1,6 +1,7 @@
 /** Blocos do detalhe do lead: score, verificacao, contatos, propostas, linha do tempo. */
 import {
   BadgeCheck,
+  Download,
   Eye,
   FileText,
   KeyRound,
@@ -15,7 +16,7 @@ import {
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type FormEvent, type ReactNode, useMemo, useState } from "react";
-import { ErroApi } from "@/api/cliente";
+import { ErroApi, baixar } from "@/api/cliente";
 import { useEmitirCodigo, useMudarProposta, useRegistrarInteracao, useRevelarContato } from "@/api/consultas";
 import type { LeadDetalhe } from "@/api/tipos";
 import { AnelScore, Botao, Cartao, Selo } from "@/componentes/base";
@@ -217,6 +218,19 @@ export function BlocoPropostas({ tenant, d }: { tenant: string; d: LeadDetalhe }
   const mudar = useMudarProposta(tenant, d.lead.id);
   const avisar = useAvisos();
   const gestao = ["owner", "gestor"].includes(d.papel);
+  const [baixando, setBaixando] = useState<string | null>(null);
+  const temCodigoAtivo = d.verificacoes.some((v) => !v.revogado_em && new Date(v.expira_em).getTime() > Date.now());
+
+  async function pdf(id: string) {
+    setBaixando(id);
+    try {
+      await baixar(`/t/${tenant}/propostas/${id}/pdf`);
+    } catch (e) {
+      avisar({ tom: "erro", titulo: e instanceof ErroApi ? e.titulo : "Não foi possível gerar o PDF." });
+    } finally {
+      setBaixando(null);
+    }
+  }
 
   async function acao(id: string, status: string) {
     try {
@@ -259,11 +273,27 @@ export function BlocoPropostas({ tenant, d }: { tenant: string; d: LeadDetalhe }
                   Marcar como enviada
                 </Botao>
               )}
+              <Botao
+                tamanho="p"
+                variante="fantasma"
+                icone={<Download className="size-3.5" />}
+                carregando={baixando === p.id}
+                onClick={() => void pdf(p.id)}
+                className="ml-auto"
+              >
+                PDF
+              </Botao>
             </div>
           </li>
         ))}
         {d.propostas.length === 0 && <li className="text-[13px] text-tinta-500">Nenhuma proposta. Use o preço justo para propor.</li>}
       </ul>
+      {d.propostas.length > 0 && !temCodigoAtivo && (
+        <p className="mt-3 flex items-start gap-2 text-[12.5px] text-ouro-300">
+          <KeyRound className="mt-0.5 size-3.5 shrink-0" />
+          Gere o código anti-golpe para ele sair no PDF: é o que deixa o credor conferir que a proposta é sua.
+        </p>
+      )}
     </Cartao>
   );
 }

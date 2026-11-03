@@ -263,3 +263,32 @@ async def test_toda_rota_do_espaco_exige_login(navegador: Navegador, cenario: Ce
     resposta = await navegador.http.get(f"/api/t/{tenant}/radar")
     assert resposta.status_code == 401
     assert isinstance(resposta, httpx.Response)
+
+
+async def test_pdf_da_proposta_sai_com_o_codigo_e_fica_na_auditoria(navegador: Navegador, cenario: Cenario) -> None:
+    tenant, operador = _base(cenario, nome="Compradora do PDF")
+    credor = cenario.parte("Credora do PDF")
+    lead = cenario.lead(tenant, cenario.requisicao(credor=credor, valor=Decimal("100000")), credor)
+    await _logar(navegador, operador)
+    proposta = (
+        await navegador.http.post(f"/api/t/{tenant}/leads/{lead}/propostas", json={"valor_oferta": "60000.00"})
+    ).json()["id"]
+    await navegador.http.post(f"/api/t/{tenant}/leads/{lead}/verificacoes", json={})
+
+    r = await navegador.http.get(f"/api/t/{tenant}/propostas/{proposta}/pdf")
+    assert r.status_code == 200
+    assert r.headers["content-type"] == "application/pdf"
+    assert r.headers["cache-control"] == "no-store"
+    assert r.headers["content-disposition"].startswith('attachment; filename="proposta-')
+    assert "Credora" not in r.headers["content-disposition"]  # nome do arquivo sem dado pessoal
+    assert r.content.startswith(b"%PDF-")
+    exportado = cenario.sql(
+        "select acao, usuario_id from app.auditoria where entidade_id = %s and acao = 'propostas.exportado'",
+        [proposta],
+    )
+    assert exportado == [("propostas.exportado", operador)]
+
+    outro, intruso = _base(cenario)
+    await _logar(navegador, intruso)
+    assert (await navegador.http.get(f"/api/t/{outro}/propostas/{proposta}/pdf")).status_code == 404
+    assert (await navegador.http.get(f"/api/t/{tenant}/propostas/{proposta}/pdf")).status_code == 404

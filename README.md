@@ -38,7 +38,7 @@ worker ── maquina_worker ──> core.*   coleta DJEN (D+1) -> triagem regex
 | 3. Resolver | Pronta a revelação de credor e herdeiros com cota. O enriquecimento (Escavador/bureau) ainda não começou. |
 | 4. Score e preço | Pronto: score com motivos, preço justo (piso do acordo estatal, teto pela TIR, cenários e memória de cálculo) e elegibilidade CMN 5.343. |
 | 5. Contato | Pronto o selo anti-golpe (código, página pública, sinal de "credor conferiu") e os contatos cifrados. WhatsApp oficial, carta e cadências ainda não começaram. |
-| 6. Negociação | Prontos o simulador (recalculado no servidor) e as propostas com alçada. O PDF da proposta ainda não começou. |
+| 6. Negociação | Prontos o simulador (recalculado no servidor), as propostas com alçada e o PDF da proposta para o credor (comparação vender hoje x esperar x acordo, código anti-golpe com QR code, marca d'água em rascunho). |
 | 7. Fechamento | O funil até "cedido" está pronto. A sala de cessão (documentos e e-Notariado) ainda não começou. |
 
 ## Rodando localmente

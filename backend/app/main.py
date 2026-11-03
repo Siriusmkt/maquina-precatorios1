@@ -16,7 +16,7 @@ from app.config import Configuracoes
 from app.erros import registrar_tratadores
 from app.logs import configurar_logs
 from app.recursos import Recursos, nomes_cookie
-from app.rotas import basicas, equipe, espaco, publico
+from app.rotas import basicas, documentos, equipe, espaco, publico
 from app.seguranca.cripto import CifraDeCampo
 from app.seguranca.http import ProtecaoCsrf, SegurancaHttp
 from app.seguranca.jwt import VerificadorJwt
@@ -91,6 +91,7 @@ def criar_app(
     app.include_router(rotas_auth.router)
     app.include_router(espaco.router)
     app.include_router(equipe.router)
+    app.include_router(documentos.router)
     app.include_router(publico.router)
 
     # Ordem: o ultimo adicionado e o mais externo.

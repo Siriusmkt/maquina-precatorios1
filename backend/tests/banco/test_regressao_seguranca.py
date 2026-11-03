@@ -23,6 +23,7 @@ FUNCOES_DO_USUARIO = {
     "alterar_membro",
     "remover_membro",
     "atualizar_preferencias",
+    "registrar_exportacao",
 }
 
 
