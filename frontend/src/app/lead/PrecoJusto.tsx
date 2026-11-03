@@ -17,8 +17,11 @@ import { dataCurta, paraNumero, percentual, reais, reaisCompacto, reaisCompactoP
 import { CINEMA } from "@/lib/movimento";
 
 const ALTURA = 230;
-const MARGEM = { esq: 8, dir: 150, topo: 16, base: 28 };
+const MARGEM = { esq: 8, topo: 16, base: 28 };
 const DISTANCIA_ROTULOS = 15;
+// Rotulos a direita em fonte mono de 11,5px: ~7px por caractere, mais o recuo de 8px e folga.
+const LARGURA_CARACTERE = 7;
+const RECUO_ROTULO = 8;
 
 /** Largura real do elemento (o SVG desenha em pixels de verdade: texto sempre legivel). */
 function useLargura<T extends HTMLElement>(): [RefObject<T | null>, number] {
@@ -61,7 +64,9 @@ function Grafico({ p }: { p: Precificacao }) {
   const minimo = Math.min(va, ...linhas.map((l) => l.valor)) * 0.9;
   const maximo = rec * 1.04;
   const y = (v: number) => MARGEM.topo + (1 - (v - minimo) / (maximo - minimo || 1)) * (ALTURA - MARGEM.topo - MARGEM.base);
-  const xFim = L - MARGEM.dir;
+  // A margem direita cabe o maior rotulo ("sugerido R$ 978,55 mil"): nenhum texto cortado na borda.
+  const maiorRotulo = Math.max(0, ...linhas.map((l) => `${l.rotulo} ${reaisCompactoPreciso(l.valor)}`.length));
+  const xFim = L - (RECUO_ROTULO + maiorRotulo * LARGURA_CARACTERE + 6);
   const pontos = Array.from({ length: 41 }, (_, i) => {
     const t = i / 40;
     return [MARGEM.esq + t * (xFim - MARGEM.esq), y(va * (rec / va) ** t)] as const;
@@ -107,7 +112,7 @@ function Grafico({ p }: { p: Precificacao }) {
                 transition={{ duration: 0.7, ease: CINEMA }}
               />
               <motion.text
-                x={xFim + 8}
+                x={xFim + RECUO_ROTULO}
                 fill={l.cor}
                 fontSize="11.5"
                 fontFamily="Geist Mono Variable, monospace"
