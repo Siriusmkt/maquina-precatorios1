@@ -206,6 +206,12 @@ begin
                    then (v_ref ->> 'id')::uuid
                    else (v_ref ->> 'tenant_id')::uuid end;
 
+  -- Exclusao do tenant inteiro (cascata): a trilha dele sai junto; nao ha o que auditar por linha.
+  if tg_op = 'DELETE' and tg_table_name <> 'tenants'
+     and not exists (select 1 from app.tenants t where t.id = v_tenant) then
+    return null;
+  end if;
+
   perform app.auditar(
     v_tenant,
     tg_table_name || '.' || lower(tg_op),

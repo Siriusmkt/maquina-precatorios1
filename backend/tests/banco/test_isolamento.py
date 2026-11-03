@@ -202,3 +202,14 @@ def test_worker_escreve_no_core_mas_nao_le_auditoria(banco: BancoDeTeste, cenari
         )
     with como_worker(banco) as conn, erro_sql(SEM_PRIVILEGIO):
         conn.execute("select 1 from app.auditoria")
+
+
+def test_exclusao_do_tenant_inteiro_funciona(cenario: Cenario) -> None:
+    # Saida de um cliente (eliminacao de dados): a cascata nao pode travar na auditoria.
+    tenant = cenario.tenant()
+    cenario.membro(tenant, "owner")
+    credor = cenario.parte()
+    cenario.lead(tenant, cenario.requisicao(credor=credor), credor)
+    cenario.contato(tenant, credor)
+    cenario.sql("delete from app.tenants where id = %s", [tenant])
+    assert cenario.sql("select count(*) from app.auditoria where tenant_id = %s", [tenant]) == [(0,)]

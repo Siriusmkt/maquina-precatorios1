@@ -62,6 +62,10 @@ class Score:
     motivos: tuple[Motivo, ...]
 
 
+def _meses(valor: Decimal) -> str:
+    return f"{valor.normalize():f}"
+
+
 def _limitar(valor: float) -> int:
     return max(0, min(100, round(valor)))
 
@@ -86,9 +90,9 @@ def _componente_ativo(d: DadosDoAtivo, hoje: date, motivos: list[Motivo]) -> int
         somar(12, "Natureza alimentar: paga antes na fila")
     if d.prazo_medio_meses is not None:
         if d.prazo_medio_meses <= 24:
-            somar(15, f"Ente paga em ~{d.prazo_medio_meses} meses")
+            somar(15, f"Ente paga em ~{_meses(d.prazo_medio_meses)} meses")
         elif d.prazo_medio_meses >= 72:
-            somar(-15, f"Ente demora ~{d.prazo_medio_meses} meses para pagar")
+            somar(-15, f"Ente demora ~{_meses(d.prazo_medio_meses)} meses para pagar")
     if d.regime_especial:
         somar(-10, "Ente em regime especial de pagamento")
     if d.ano_loa is not None:
