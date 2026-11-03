@@ -22,8 +22,7 @@ def banco() -> Iterator[BancoDeTeste]:
         psycopg.connect(dsn, connect_timeout=3).close()
     except psycopg.OperationalError as exc:  # pragma: no cover - mensagem de ajuda
         pytest.exit(
-            f"Postgres de teste indisponivel ({exc}).\n"
-            "Rode scripts/pg-teste.sh start ou defina TEST_DATABASE_URL.",
+            f"Postgres de teste indisponivel ({exc}).\nRode scripts/pg-teste.sh start ou defina TEST_DATABASE_URL.",
             returncode=2,
         )
     instancia, nome = criar_banco(dsn)

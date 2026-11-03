@@ -7,8 +7,16 @@ from tests.apoio.banco import Cenario
 FUNCOES_DO_ANONIMO = {"consultar_verificacao"}
 
 FUNCOES_DO_USUARIO = {
-    "meus_tenants", "sou_membro_ativo", "tenho_papel", "escopo_irrestrito", "meus_tribunais",
-    "mascarar_cnj", "assumir_lead", "emitir_verificacao", "revogar_verificacao", "revelar_contato",
+    "meus_tenants",
+    "sou_membro_ativo",
+    "tenho_papel",
+    "escopo_irrestrito",
+    "meus_tribunais",
+    "mascarar_cnj",
+    "assumir_lead",
+    "emitir_verificacao",
+    "revogar_verificacao",
+    "revelar_contato",
     "consultar_verificacao",
 }
 

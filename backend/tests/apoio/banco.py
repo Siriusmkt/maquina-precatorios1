@@ -146,14 +146,11 @@ class Cenario:
         linhas = self.sql(
             """insert into app.tenants (nome, cnpj, tribunais_permitidos, limite_leads_mes, assentos, config, ativo)
                values (%s, %s, %s, %s, %s, %s, %s) returning id""",
-            [nome, "12345678000190", tribunais, limite_leads_mes, assentos,
-             json.dumps(config or {}), ativo],
+            [nome, "12345678000190", tribunais, limite_leads_mes, assentos, json.dumps(config or {}), ativo],
         )
         return linhas[0][0]
 
-    def membro(
-        self, tenant: uuid.UUID, papel: str = "operador", *, nome_publico: str | None = None
-    ) -> uuid.UUID:
+    def membro(self, tenant: uuid.UUID, papel: str = "operador", *, nome_publico: str | None = None) -> uuid.UUID:
         uid = self.usuario()
         self.sql(
             "insert into app.membros (tenant_id, user_id, papel, nome_publico) values (%s, %s, %s, %s)",
@@ -197,8 +194,18 @@ class Cenario:
                  (tribunal, numero_requisicao, processo_origem, credor_parte_id, ente_id, valor_face,
                   data_base, status, ja_cedido, superpreferencia, natureza, ano_loa)
                values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'alimentar', 2027) returning id""",
-            [tribunal, f"REQ-{secrets.token_hex(6)}", processo, credor, ente, valor,
-             date(2024, 1, 1), status, ja_cedido, superpreferencia],
+            [
+                tribunal,
+                f"REQ-{secrets.token_hex(6)}",
+                processo,
+                credor,
+                ente,
+                valor,
+                date(2024, 1, 1),
+                status,
+                ja_cedido,
+                superpreferencia,
+            ],
         )[0][0]
 
     def vincular(self, processo: str, parte: uuid.UUID, papel: str = "credor") -> None:

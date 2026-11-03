@@ -10,8 +10,13 @@ from tests.apoio.erros import SEM_PRIVILEGIO, erro_sql
 
 
 def _proposta(
-    banco: BancoDeTeste, usuario: uuid.UUID, tenant: uuid.UUID, lead: uuid.UUID,
-    oferta: str = "65000.00", atualizado: str = "100000.00",
+    banco: BancoDeTeste,
+    usuario: uuid.UUID,
+    tenant: uuid.UUID,
+    lead: uuid.UUID,
+    *,
+    oferta: str = "65000.00",
+    atualizado: str = "100000.00",
 ) -> uuid.UUID:
     with como(banco, usuario) as conn:
         linha = conn.execute(
@@ -36,16 +41,15 @@ def test_operador_nao_aprova(banco: BancoDeTeste, cenario: Cenario) -> None:
         _mudar_status(banco, operador, proposta, "aprovada")
 
 
-def test_gestor_aprova_dentro_da_alcada_e_o_aprovador_e_registrado(
-    banco: BancoDeTeste, cenario: Cenario
-) -> None:
+def test_gestor_aprova_dentro_da_alcada_e_o_aprovador_e_registrado(banco: BancoDeTeste, cenario: Cenario) -> None:
     tenant = cenario.tenant(config={"alcada_gestor_desagio_min": 30})
     operador = cenario.membro(tenant, "operador")
     gestor = cenario.membro(tenant, "gestor")
     proposta = _proposta(banco, operador, tenant, cenario.lead(tenant, cenario.requisicao()), oferta="65000.00")
     _mudar_status(banco, gestor, proposta, "aprovada")
     linha = cenario.sql(
-        "select status, aprovada_por, aprovada_em is not null, criado_por, desagio_pct from app.propostas where id = %s",
+        "select status, aprovada_por, aprovada_em is not null, criado_por, desagio_pct"
+        " from app.propostas where id = %s",
         [proposta],
     )
     assert linha == [("aprovada", gestor, True, operador, Decimal("35.00"))]

@@ -42,7 +42,7 @@ def _lead_com_proposta_enviada(banco: BancoDeTeste, cenario: Cenario):  # type: 
 
 
 def test_emitir_e_conferir_codigo(banco: BancoDeTeste, cenario: Cenario) -> None:
-    tenant, gestor, lead, interacao, processo = _lead_com_proposta_enviada(banco, cenario)
+    _, gestor, lead, interacao, processo = _lead_com_proposta_enviada(banco, cenario)
     with como(banco, gestor) as conn:
         codigo = conn.execute("select app.emitir_verificacao(%s, %s)", [lead, interacao]).fetchone()[0]  # type: ignore[index]
     assert FORMATO.match(codigo)
@@ -58,7 +58,8 @@ def test_emitir_e_conferir_codigo(banco: BancoDeTeste, cenario: Cenario) -> None
     assert resposta["aviso"] == "Nunca cobramos nada."
     assert resposta["precatorio"]["ente"] == "Estado de Sao Paulo"
     # Processo mascarado e nenhum dado do credor na resposta publica.
-    assert resposta["precatorio"]["processo"] == f"{processo[:7]}-**.{processo[9:13]}.{processo[13]}.{processo[14:16]}.****"
+    mascarado = f"{processo[:7]}-**.{processo[9:13]}.{processo[13]}.{processo[14:16]}.****"
+    assert resposta["precatorio"]["processo"] == mascarado
     texto = json.dumps(resposta)
     assert "Joaquim" not in texto
     assert processo not in texto
@@ -89,8 +90,10 @@ def test_codigo_aceita_minusculas_espacos_e_sem_hifen(banco: BancoDeTeste, cenar
     assert resposta["status"] == "valido"
 
 
-@pytest.mark.parametrize("entrada", ["", "ABCD", "ABCD-EFGH-IJKL", "0000-0000-0000", "'; drop table app.leads; --",
-                                     "A" * 5000, "ZZZZ-ZZZZ-ZZZZ"])
+@pytest.mark.parametrize(
+    "entrada",
+    ["", "ABCD", "ABCD-EFGH-IJKL", "0000-0000-0000", "'; drop table app.leads; --", "A" * 5000, "ZZZZ-ZZZZ-ZZZZ"],
+)
 def test_codigo_invalido_ou_inexistente_tem_a_mesma_resposta(banco: BancoDeTeste, entrada: str) -> None:
     with como(banco, None) as conn:
         resposta = conn.execute("select app.consultar_verificacao(%s)", [entrada]).fetchone()[0]  # type: ignore[index]
@@ -102,7 +105,11 @@ def test_codigo_expirado_e_revogado(banco: BancoDeTeste, cenario: Cenario) -> No
     with como(banco, gestor) as conn:
         expira = conn.execute("select app.emitir_verificacao(%s)", [lead]).fetchone()[0]  # type: ignore[index]
         revoga = conn.execute("select app.emitir_verificacao(%s)", [lead]).fetchone()[0]  # type: ignore[index]
-    cenario.sql("update app.verificacoes set criado_em = now() - interval '40 days', expira_em = now() - interval '1 day' where codigo = %s", [expira])
+    cenario.sql(
+        "update app.verificacoes set criado_em = now() - interval '40 days',"
+        " expira_em = now() - interval '1 day' where codigo = %s",
+        [expira],
+    )
     with como(banco, gestor) as conn:
         conn.execute("select app.revogar_verificacao(%s)", [revoga])
 
@@ -117,7 +124,8 @@ def test_codigo_so_nasce_pela_funcao(banco: BancoDeTeste, cenario: Cenario) -> N
     lead = cenario.lead(tenant, cenario.requisicao())
     with como(banco, owner) as conn, erro_sql(SEM_PRIVILEGIO):
         conn.execute(
-            "insert into app.verificacoes (codigo, tenant_id, lead_id, expira_em) values ('AAAA-BBBB-CCCC', %s, %s, now() + interval '1 day')",
+            "insert into app.verificacoes (codigo, tenant_id, lead_id, expira_em)"
+            " values ('AAAA-BBBB-CCCC', %s, %s, now() + interval '1 day')",
             [tenant, lead],
         )
     with como(banco, owner) as conn, erro_sql(SEM_PRIVILEGIO):
@@ -141,8 +149,7 @@ def test_validade_do_codigo_e_limitada(banco: BancoDeTeste, cenario: Cenario) ->
 
 
 def test_codigos_sao_unicos_e_sem_vies(cenario: Cenario) -> None:
-    codigos = [linha[0] for linha in cenario.sql(
-        "select app.gerar_codigo_verificacao() from generate_series(1, 3000)")]
+    codigos = [linha[0] for linha in cenario.sql("select app.gerar_codigo_verificacao() from generate_series(1, 3000)")]
     assert len(set(codigos)) == len(codigos)
     simbolos = Counter("".join(c.replace("-", "") for c in codigos))
     assert set(simbolos) == ALFABETO
@@ -185,7 +192,9 @@ def test_auditoria_nao_guarda_segredos(cenario: Cenario) -> None:
     tenant = cenario.tenant()
     contato = cenario.contato(tenant, cenario.parte(), cifrado=b"\x01segredo")
     dados = cenario.sql("select dados::text from app.auditoria where entidade_id = %s", [str(contato)])
-    assert dados and "valor_cifrado" not in dados[0][0] and "valor_hash" not in dados[0][0]
+    assert dados
+    assert "valor_cifrado" not in dados[0][0]
+    assert "valor_hash" not in dados[0][0]
 
 
 def test_auditoria_so_para_gestao_e_imutavel(banco: BancoDeTeste, cenario: Cenario) -> None:
@@ -198,7 +207,8 @@ def test_auditoria_so_para_gestao_e_imutavel(banco: BancoDeTeste, cenario: Cenar
         assert conn.execute("select count(*) from app.auditoria where tenant_id = %s", [tenant]).fetchone() == (0,)
     with como(banco, gestor) as conn:
         total = conn.execute("select count(*) from app.auditoria where tenant_id = %s", [tenant]).fetchone()
-    assert total is not None and total[0] > 0
+    assert total is not None
+    assert total[0] > 0
 
     with como(banco, gestor) as conn, erro_sql(SEM_PRIVILEGIO):
         conn.execute("delete from app.auditoria where tenant_id = %s", [tenant])

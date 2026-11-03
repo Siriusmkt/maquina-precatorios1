@@ -17,8 +17,17 @@ def test_conexao_da_api_sem_papel_nao_le_nada(banco: BancoDeTeste) -> None:
 
 @pytest.mark.parametrize(
     "tabela",
-    ["core.requisicoes", "core.partes", "core.publicacoes", "app.leads", "app.tenants",
-     "app.v_radar", "app.contatos", "app.auditoria", "app.verificacoes"],
+    [
+        "core.requisicoes",
+        "core.partes",
+        "core.publicacoes",
+        "app.leads",
+        "app.tenants",
+        "app.v_radar",
+        "app.contatos",
+        "app.auditoria",
+        "app.verificacoes",
+    ],
 )
 def test_anonimo_nao_le_nada(banco: BancoDeTeste, tabela: str) -> None:
     with como(banco, None) as conn, erro_sql(SEM_PRIVILEGIO):
@@ -32,7 +41,8 @@ def test_anonimo_so_executa_a_consulta_publica(banco: BancoDeTeste, cenario: Cen
         conn.execute("select app.assumir_lead(%s, %s)", [t, req])
     with como(banco, None) as conn:
         resposta = conn.execute("select app.consultar_verificacao('XXXX')").fetchone()
-    assert resposta is not None and resposta[0] == {"status": "invalido"}
+    assert resposta is not None
+    assert resposta[0] == {"status": "invalido"}
 
 
 def test_usuario_sem_tenant_nao_ve_o_radar(banco: BancoDeTeste, cenario: Cenario) -> None:
@@ -74,9 +84,7 @@ def test_radar_respeita_o_escopo_do_plano(banco: BancoDeTeste, cenario: Cenario)
         "select valor_cifrado from app.contatos",
     ],
 )
-def test_colunas_sensiveis_nunca_chegam_ao_cliente(
-    banco: BancoDeTeste, cenario: Cenario, consulta: str
-) -> None:
+def test_colunas_sensiveis_nunca_chegam_ao_cliente(banco: BancoDeTeste, cenario: Cenario, consulta: str) -> None:
     usuario = cenario.membro(cenario.tenant(), "owner")
     with como(banco, usuario) as conn, erro_sql(SEM_PRIVILEGIO):
         conn.execute(consulta)
@@ -118,9 +126,7 @@ def test_tenant_nao_ve_nem_altera_dados_de_outro(banco: BancoDeTeste, cenario: C
         assert cur.rowcount == 0
 
 
-def test_fk_composta_impede_apontar_para_lead_de_outro_tenant(
-    banco: BancoDeTeste, cenario: Cenario
-) -> None:
+def test_fk_composta_impede_apontar_para_lead_de_outro_tenant(banco: BancoDeTeste, cenario: Cenario) -> None:
     tenant_a, tenant_b = cenario.tenant(), cenario.tenant()
     usuario_a = cenario.membro(tenant_a, "operador")
     lead_b = cenario.lead(tenant_b, cenario.requisicao())
@@ -134,9 +140,7 @@ def test_fk_composta_impede_apontar_para_lead_de_outro_tenant(
         )
 
 
-def test_interacao_nao_pode_ser_registrada_em_nome_de_outro(
-    banco: BancoDeTeste, cenario: Cenario
-) -> None:
+def test_interacao_nao_pode_ser_registrada_em_nome_de_outro(banco: BancoDeTeste, cenario: Cenario) -> None:
     tenant = cenario.tenant()
     operador = cenario.membro(tenant, "operador")
     colega = cenario.membro(tenant, "operador")
@@ -158,9 +162,7 @@ def test_papel_leitura_nao_altera_nada(banco: BancoDeTeste, cenario: Cenario) ->
         cur = conn.execute("update app.leads set estagio = 'perdido' where id = %s", [lead])
         assert cur.rowcount == 0
     with como(banco, leitor) as conn, erro_sql(SEM_PRIVILEGIO):
-        conn.execute(
-            "insert into app.teses (tenant_id, nome, filtros) values (%s, 'x', '{}')", [tenant]
-        )
+        conn.execute("insert into app.teses (tenant_id, nome, filtros) values (%s, 'x', '{}')", [tenant])
 
 
 def test_cliente_nao_altera_score_nem_preco(banco: BancoDeTeste, cenario: Cenario) -> None:
