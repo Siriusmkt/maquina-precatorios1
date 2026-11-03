@@ -102,11 +102,11 @@ def _componente_ativo(d: DadosDoAtivo, hoje: date, motivos: list[Motivo]) -> int
         elif distancia >= 4:
             somar(-6, f"LOA distante ({d.ano_loa})")
     if d.posicao_fila is not None and d.posicao_fila <= 500:
-        somar(6, f"Posicao {d.posicao_fila} na fila")
+        somar(6, f"Posição {d.posicao_fila} na fila")
     if d.status in ("em_pagamento", "inscrito"):
-        somar(5, "Ja inscrito para pagamento")
+        somar(5, "Já inscrito para pagamento")
     if d.esfera == "federal":
-        somar(8, "Devedor federal (historico de pagamento em dia)")
+        somar(8, "Devedor federal (histórico de pagamento em dia)")
     return _limitar(pontos)
 
 
@@ -123,15 +123,15 @@ def _componente_risco(d: DadosDoAtivo, motivos: list[Motivo]) -> int:
     if "penhora" in d.eventos:
         somar(30, "Penhora registrada")
     if "cessao_comunicada" in d.eventos:
-        somar(45, "Ja houve cessao comunicada")
+        somar(45, "Já houve cessão comunicada")
     if "habilitacao_herdeiros" in d.eventos or d.falecido:
-        somar(12, "Sucessao/herdeiros: mais documentos no fechamento")
+        somar(12, "Sucessão/herdeiros: mais documentos no fechamento")
     if d.definitivo is not True:
-        somar(15, "Sem transito em julgado definitivo (Res. CMN 5.343)")
+        somar(15, "Sem trânsito em julgado definitivo (Res. CMN 5.343)")
     if d.status == "pre_precatorio":
-        somar(8, "Pre-precatorio: ainda nao expedido")
+        somar(8, "Pré-precatório: ainda não expedido")
     if d.valor_face > 0 and d.honorarios_destacados / d.valor_face >= Decimal("0.3"):
-        somar(6, "Honorarios destacados altos")
+        somar(6, "Honorários destacados altos")
     return _limitar(pontos)
 
 
@@ -144,15 +144,15 @@ def _componente_propensao(d: DadosDoAtivo, hoje: date, motivos: list[Motivo]) ->
         motivos.append(Motivo("propensao", impacto, texto))
 
     if "acordo_direto_pedido" in d.eventos or "acordo_direto_homologado" in d.eventos:
-        somar(40, "Credor ja pediu acordo direto: quer liquidez")
+        somar(40, "Credor já pediu acordo direto: quer liquidez")
     if d.data_base is not None and (hoje - d.data_base).days >= 5 * 365:
-        somar(15, "Credito parado ha mais de 5 anos")
+        somar(15, "Crédito parado há mais de 5 anos")
     if "habilitacao_herdeiros" in d.eventos or d.falecido:
-        somar(15, "Espolio: herdeiros costumam preferir dividir agora")
+        somar(15, "Espólio: herdeiros costumam preferir dividir agora")
     if d.prazo_medio_meses is not None and d.prazo_medio_meses >= 60:
         somar(10, "Ente paga mal: espera longa incentiva a venda")
     if "requisitorio_expedido" in d.eventos or "calculos_homologados" in d.eventos:
-        somar(5, "Fase recente: credor ainda nao recebeu ofertas")
+        somar(5, "Fase recente: credor ainda não recebeu ofertas")
     return _limitar(pontos)
 
 

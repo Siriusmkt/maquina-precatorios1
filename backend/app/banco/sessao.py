@@ -45,6 +45,8 @@ def criar_pool(dsn: str, *, minimo: int, maximo: int, prepared_statements: bool)
             "application_name": "maquina-api",
         },
         connection_class=AsyncConnection[dict[str, Any]],
+        # Conexao derrubada (restart/failover do Postgres) e descartada antes de ser usada.
+        check=AsyncConnectionPool.check_connection,
         timeout=5,
         max_idle=300,
         reconnect_timeout=30,

@@ -108,6 +108,11 @@ def _pct(valor: Decimal) -> Decimal:
     return (valor * 100).quantize(CENTAVO, rounding=ROUND_HALF_EVEN)
 
 
+def _num(valor: Decimal, casas: int = 2) -> str:
+    """Numero no formato brasileiro para textos: 4.5 -> '4,50'; prazo 66.0 -> '66'."""
+    return f"{valor:,.{casas}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 def _fator_correcao(anos: Decimal, ipca_aa: Decimal, juros_aa: Decimal) -> Decimal:
     """IPCA composto + juros simples sobre o periodo."""
     return ((UM + ipca_aa) ** anos) * (UM + juros_aa * anos)
@@ -154,21 +159,21 @@ def _precificar(ativo: Ativo, p: Parametros, hoje: date) -> Precificacao:
     preco_alvo = recebimento / (UM + p.taxa_alvo_aa) ** anos_ate_pagamento
     preco_teto = recebimento / (UM + p.tir_minima_aa) ** anos_ate_pagamento
     if p.taxa_alvo_aa < p.tir_minima_aa:
-        alertas.append("Taxa-alvo menor que a TIR minima: o preco foi limitado ao teto.")
+        alertas.append("Taxa-alvo menor que a TIR mínima: o preço foi limitado ao teto.")
 
     piso = valor_atualizado * (UM - ativo.acordo.desagio) if ativo.acordo else None
 
     sugerido: Decimal | None
     if piso is not None and piso > preco_teto:
         sugerido = None
-        alertas.append("Inviavel na TIR minima: para superar o acordo estatal seria preciso pagar acima do teto.")
+        alertas.append("Inviável na TIR mínima: para superar o acordo estatal seria preciso pagar acima do teto.")
     else:
         sugerido = min(max(preco_alvo, piso or Decimal(0)), preco_teto)
         if piso is not None and sugerido == piso:
-            alertas.append("Preco puxado para o piso do acordo estatal (abaixo disso o credor prefere o acordo).")
+            alertas.append("Preço puxado para o piso do acordo estatal (abaixo disso o credor prefere o acordo).")
 
     if ativo.prazo_estimado_sem_historico:
-        alertas.append("Prazo do ente estimado sem historico de aportes: trate a TIR com cautela.")
+        alertas.append("Prazo do ente estimado sem histórico de aportes: trate a TIR com cautela.")
 
     cenarios = tuple(
         _cenario(nome, ativo, p, anos_decorridos=anos_decorridos, multiplicador=multiplicador, preco=sugerido)
@@ -238,30 +243,30 @@ def _memoria(
     piso: Decimal | None,
     sugerido: Decimal | None,
 ) -> tuple[Passo, ...]:
-    correcao = f"IPCA {_pct(p.ipca_aa)}% a.a. composto + juros {_pct(p.juros_aa)}% a.a. simples"
+    correcao = f"IPCA {_num(_pct(p.ipca_aa))}% a.a. composto + juros {_num(_pct(p.juros_aa))}% a.a. simples"
     passos = [
-        Passo("Valor de face", _dinheiro(ativo.valor_face), "Valor da requisicao na data-base."),
-        Passo("Honorarios destacados", -_dinheiro(ativo.honorarios_destacados), "Parte do advogado, paga a ele."),
+        Passo("Valor de face", _dinheiro(ativo.valor_face), "Valor da requisição na data-base."),
+        Passo("Honorários destacados", -_dinheiro(ativo.honorarios_destacados), "Parte do advogado, paga a ele."),
         Passo("Base do credor", _dinheiro(base), "O que de fato pertence ao credor."),
         Passo(
             "Valor atualizado hoje",
             _dinheiro(valor_atualizado),
-            f"{correcao} sobre {anos_decorridos.quantize(Decimal('0.01'))} anos desde a data-base.",
+            f"{correcao} sobre {_num(anos_decorridos)} anos desde a data-base.",
         ),
         Passo(
             "Recebimento esperado",
             _dinheiro(recebimento),
-            f"Mesma correcao ate o pagamento estimado em {ativo.prazo_meses} meses.",
+            f"Mesma correção até o pagamento estimado em {_num(ativo.prazo_meses, 0)} meses.",
         ),
         Passo(
-            "Preco na taxa-alvo",
+            "Preço na taxa-alvo",
             _dinheiro(preco_alvo),
-            f"Recebimento trazido a valor presente a {_pct(p.taxa_alvo_aa)}% a.a.",
+            f"Recebimento trazido a valor presente a {_num(_pct(p.taxa_alvo_aa))}% a.a.",
         ),
         Passo(
-            "Teto pela TIR minima",
+            "Teto pela TIR mínima",
             _dinheiro(preco_teto),
-            f"Maior preco que ainda rende {_pct(p.tir_minima_aa)}% a.a.",
+            f"Maior preço que ainda rende {_num(_pct(p.tir_minima_aa))}% a.a.",
         ),
     ]
     if ativo.acordo and piso is not None:
@@ -269,15 +274,15 @@ def _memoria(
             Passo(
                 "Piso do acordo estatal",
                 _dinheiro(piso),
-                f"{ativo.acordo.descricao}: desagio de {_pct(ativo.acordo.desagio)}% "
-                f"pago em ~{ativo.acordo.prazo_meses} meses.",
+                f"{ativo.acordo.descricao}: deságio de {_num(_pct(ativo.acordo.desagio))}% "
+                f"pago em ~{_num(ativo.acordo.prazo_meses, 0)} meses.",
             )
         )
     passos.append(
         Passo(
-            "Preco sugerido",
+            "Preço sugerido",
             _dinheiro(sugerido) if sugerido is not None else None,
-            "Taxa-alvo, respeitando piso e teto." if sugerido is not None else "Sem preco viavel nas premissas.",
+            "Taxa-alvo, respeitando piso e teto." if sugerido is not None else "Sem preço viável nas premissas.",
         )
     )
     return tuple(passos)

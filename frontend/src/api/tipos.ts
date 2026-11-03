@@ -1,0 +1,255 @@
+/** Contratos da API. Dinheiro e decimais chegam como string (precisao exata). */
+
+export type Papel = "owner" | "gestor" | "operador" | "juridico" | "leitura";
+
+export type Estagio =
+  | "novo"
+  | "qualificado"
+  | "enriquecido"
+  | "em_contato"
+  | "respondeu"
+  | "negociando"
+  | "proposta_enviada"
+  | "documentacao"
+  | "escritura_agendada"
+  | "cedido"
+  | "perdido";
+
+export const ORDEM_FUNIL: Estagio[] = [
+  "novo",
+  "qualificado",
+  "enriquecido",
+  "em_contato",
+  "respondeu",
+  "negociando",
+  "proposta_enviada",
+  "documentacao",
+  "escritura_agendada",
+  "cedido",
+];
+
+export interface TenantDoUsuario {
+  id: string;
+  nome: string;
+  plano: string;
+  papel: Papel;
+  tribunais_permitidos: string[] | null;
+  limite_leads_mes: number | null;
+  nome_publico: string | null;
+}
+
+export interface Perfil {
+  usuario_id: string;
+  email: string | null;
+  aal: string;
+  tenants: TenantDoUsuario[];
+}
+
+export interface ItemRadar {
+  requisicao_id: string;
+  tribunal: string;
+  tipo: string;
+  natureza: string | null;
+  valor_face: string | null;
+  data_base: string | null;
+  ano_loa: number | null;
+  posicao_fila: number | null;
+  status: string;
+  definitivo: boolean | null;
+  honorarios_destacados: string | null;
+  score_ativo: number | null;
+  score_detalhe: { ativo?: number; risco?: number; propensao?: number; motivos?: string[] };
+  ente_id: string | null;
+  ente: string | null;
+  esfera: string | null;
+  uf: string | null;
+  prazo_medio_meses: string | null;
+  regime_especial: boolean | null;
+  ultimo_evento: string | null;
+  ultimo_evento_em: string | null;
+  advogado: string | null;
+  oab_numero: string | null;
+  oab_uf: string | null;
+  atualizado_em: string;
+  ja_assumido: boolean;
+}
+
+export interface PaginaRadar {
+  itens: ItemRadar[];
+  proximo_cursor: string | null;
+}
+
+export interface FiltrosRadar {
+  tribunal?: string[];
+  esfera?: string[];
+  natureza?: string[];
+  evento?: string[];
+  valor_min?: string;
+  score_min?: number;
+  so_definitivos?: boolean;
+}
+
+export interface ResumoRadar {
+  total_disponivel: number;
+  valor_total: string;
+  detectados_7_dias: number;
+  por_tribunal: { tribunal: string; quantidade: number; valor: number }[];
+}
+
+export interface Painel {
+  funil: { estagio: Estagio; quantidade: number; valor: number }[];
+  leads_7_dias: number;
+  propostas_aguardando: number;
+  valor_em_negociacao: string;
+  credores_que_conferiram_codigo: number;
+  cedidos: number;
+}
+
+export interface LeadResumo {
+  id: string;
+  estagio: Estagio;
+  score: number | null;
+  preco_sugerido: string | null;
+  valor_atualizado: string | null;
+  proxima_acao_em: string | null;
+  criado_em: string;
+  atualizado_em: string;
+  requisicao_id: string;
+  tribunal: string | null;
+  valor_face: string | null;
+  natureza: string | null;
+  score_ativo: number | null;
+  ente: string | null;
+  credor: string | null;
+  responsavel: string | null;
+}
+
+export interface Motivo {
+  componente: "ativo" | "risco" | "propensao";
+  impacto: number;
+  texto: string;
+}
+
+export interface Score {
+  score: number;
+  ativo: number;
+  risco: number;
+  propensao: number;
+  elegivel_fidc: boolean;
+  motivos: Motivo[];
+}
+
+export interface Passo {
+  rotulo: string;
+  valor: string | null;
+  explicacao: string;
+}
+
+export interface Precificacao {
+  base_do_credor: string;
+  valor_atualizado: string;
+  recebimento_esperado: string;
+  data_pagamento_esperada: string;
+  preco_alvo: string;
+  preco_teto: string;
+  piso_acordo: string | null;
+  preco_sugerido: string | null;
+  viavel: boolean;
+  desagio_pct: string | null;
+  tir_aa: string | null;
+  cenarios: { nome: string; prazo_meses: string; recebimento: string; tir_aa: string | null }[];
+  credor: {
+    vender_hoje: string | null;
+    esperar_valor: string;
+    esperar_meses: string;
+    acordo_valor: string | null;
+    acordo_meses: string | null;
+  };
+  memoria: Passo[];
+  alertas: string[];
+}
+
+export interface LeadDetalhe {
+  lead: {
+    id: string;
+    estagio: Estagio;
+    credor: string | null;
+    credor_falecido: boolean | null;
+    tribunal: string | null;
+    ente: string | null;
+    esfera: string | null;
+    natureza: string | null;
+    valor_face: string | null;
+    data_base: string | null;
+    ano_loa: number | null;
+    posicao_fila: number | null;
+    status: string | null;
+    definitivo: boolean | null;
+    honorarios_destacados: string | null;
+    numero_requisicao: string | null;
+    advogado: string | null;
+    oab_numero: string | null;
+    oab_uf: string | null;
+    responsavel: string | null;
+    motivo_perda: string | null;
+    requisicao_id: string;
+    criado_em: string;
+  };
+  processo: string | null;
+  pessoas: { nome: string; papel: string }[];
+  score: Score;
+  precificacao: Precificacao | null;
+  eventos: { tipo: string; data_evento: string; extraido_por: string | null; confianca: string | null }[];
+  interacoes: {
+    id: string;
+    canal: string;
+    direcao: string;
+    autor: string;
+    conteudo: string | null;
+    status: string | null;
+    criado_em: string;
+    usuario: string | null;
+  }[];
+  propostas: {
+    id: string;
+    valor_atualizado: string;
+    valor_oferta: string;
+    desagio_pct: string | null;
+    status: string;
+    valida_ate: string | null;
+    criado_em: string;
+    aprovada_em: string | null;
+    enviada_em: string | null;
+  }[];
+  verificacoes: {
+    codigo: string;
+    criado_em: string;
+    expira_em: string;
+    revogado_em: string | null;
+    acessos: number;
+    ultimo_acesso_em: string | null;
+  }[];
+  contatos: {
+    id: string;
+    tipo: string;
+    origem: string;
+    validado: boolean;
+    opt_out_em: string | null;
+    nao_me_ligue: boolean;
+    coletado_em: string;
+  }[];
+  transicoes: Estagio[];
+  papel: Papel;
+}
+
+export interface VerificacaoPublica {
+  status: "valido" | "expirado" | "revogado" | "invalido";
+  codigo?: string;
+  emitido_em?: string;
+  expira_em?: string;
+  comprador?: { nome: string; cnpj: string | null };
+  contato?: { canal: string; quando: string; quem: string } | null;
+  precatorio?: { tribunal: string; ente: string | null; processo: string | null };
+  oferta?: { valor: string; valida_ate: string | null; enviada_em: string | null } | null;
+  aviso?: string;
+}

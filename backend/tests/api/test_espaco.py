@@ -97,7 +97,7 @@ async def test_assumir_lead_revela_credor_e_traz_preco_explicado(navegador: Nave
     assert detalhe["transicoes"] == ["qualificado", "perdido"]
     preco = detalhe["precificacao"]
     assert Decimal(preco["preco_sugerido"]) > Decimal(preco["piso_acordo"])
-    assert preco["memoria"][-1]["rotulo"] == "Preco sugerido"
+    assert preco["memoria"][-1]["rotulo"] == "Preço sugerido"
     assert 0 <= detalhe["score"]["score"] <= 100
 
     lista = (await navegador.http.get(f"/api/t/{tenant}/leads")).json()

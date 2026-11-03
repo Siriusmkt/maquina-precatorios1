@@ -323,7 +323,6 @@ def main() -> None:  # noqa: PLR0912, PLR0915 - roteiro linear de carga de dados
             + ["negociando"] * 2
             + ["proposta_enviada", "documentacao", "escritura_agendada", "cedido", "perdido"]
         )
-        melhores = sorted(requisicoes, key=lambda r: -r[2])[: len(estagios)]
         lead_por_estagio: dict[str, uuid.UUID] = {}
         parametros = Parametros(
             taxa_alvo_aa=Decimal("0.24"),
@@ -332,12 +331,25 @@ def main() -> None:  # noqa: PLR0912, PLR0915 - roteiro linear de carga de dados
             juros_aa=Decimal("0.02"),
             aliquota_ir=Decimal("0.03"),
         )
-        for (req_id, credor, score_ativo, req), estagio in zip(melhores, estagios, strict=True):
+
+        def precificar(req: dict[str, object]) -> tuple[Decimal | None, Decimal | None]:
             try:
                 preco = avaliar_preco(req, parametros, HOJE, prazo_padrao_meses=Decimal(48))
-                sugerido, atualizado = preco.preco_sugerido, preco.valor_atualizado
             except PremissaInvalida:
-                sugerido, atualizado = None, None
+                return None, None
+            return preco.preco_sugerido, preco.valor_atualizado
+
+        # Melhores scores viram leads; os viaveis (com preco) ficam nas etapas avancadas do funil.
+        candidatos = [(r, *precificar(r[3])) for r in sorted(requisicoes, key=lambda r: -r[2])[: len(estagios) + 6]]
+        viaveis = [c for c in candidatos if c[1] is not None]
+        avancados = len(estagios) - 12  # de "negociando" em diante
+        reservados = viaveis[:avancados]
+        escolhidos = [c for c in candidatos if c not in reservados][:12] + reservados
+        if len(reservados) < avancados:
+            escolhidos = candidatos[: len(estagios)]
+        for ((req_id, credor, score_ativo, _req), sugerido, atualizado), estagio in zip(
+            escolhidos, estagios, strict=True
+        ):
             c.execute(
                 """insert into app.leads (tenant_id, requisicao_id, credor_parte_id, estagio, responsavel_id, score,
                                          preco_sugerido, valor_atualizado, motivo_perda, criado_em)
@@ -407,7 +419,11 @@ def main() -> None:  # noqa: PLR0912, PLR0915 - roteiro linear de carga de dados
         c.execute("update app.propostas set status = 'aprovada' where id = %s", [proposta])
         c.execute("update app.propostas set status = 'enviada' where id = %s", [proposta])
         como(operadora)
-        c.execute("select app.emitir_verificacao(%s)", [alvo])
+        c.execute(
+            "select id from app.interacoes where lead_id = %s and canal = 'carta' order by criado_em limit 1", [alvo]
+        )
+        carta = c.fetchone()
+        c.execute("select app.emitir_verificacao(%s, %s)", [alvo, carta[0] if carta else None])
         codigo = c.fetchone()[0]  # type: ignore[index]
         c.execute("select app.consultar_verificacao(%s)", [codigo])
         conn.commit()

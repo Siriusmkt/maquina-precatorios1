@@ -343,7 +343,7 @@ begin
           or new.ir_estimado is distinct from old.ir_estimado
           or new.premissas is distinct from old.premissas) then
     raise exception using errcode = 'MQ409', message = 'proposta_congelada',
-      detail = 'Depois de aprovada, a proposta nao muda. Crie uma nova.';
+      detail = 'Depois de aprovada, a proposta não muda. Crie uma nova.';
   end if;
 
   if new.status = old.status then
@@ -365,7 +365,7 @@ begin
       v_desagio := round((1 - new.valor_oferta / new.valor_atualizado) * 100, 2);
       if v_minimo is not null and v_desagio < v_minimo then
         raise exception using errcode = 'MQ403', message = 'fora_da_alcada',
-          detail = format('Desagio %s%% abaixo do minimo de %s%% para gestor.', v_desagio, v_minimo);
+          detail = format('Deságio %s%% abaixo do mínimo de %s%% para gestor.', v_desagio, v_minimo);
       end if;
     end if;
     new.aprovada_por := auth.uid();
@@ -438,7 +438,7 @@ begin
      where l.tenant_id = p_tenant and l.criado_em >= v_inicio_mes;
     if v_usados >= v_tenant.limite_leads_mes then
       raise exception using errcode = 'MQ429', message = 'cota_leads_mes_excedida',
-        detail = format('Limite do plano: %s leads por mes.', v_tenant.limite_leads_mes);
+        detail = format('Limite do plano: %s leads por mês.', v_tenant.limite_leads_mes);
     end if;
   end if;
 
@@ -593,7 +593,7 @@ begin
   if v.acessos = 0 then
     insert into app.interacoes (tenant_id, lead_id, canal, direcao, autor, conteudo)
     values (v.tenant_id, v.lead_id, 'portal', 'entrada', 'credor',
-            'Credor conferiu o codigo de verificacao ' || v_codigo || '.');
+            'Credor conferiu o código de verificação ' || v_codigo || '.');
   end if;
 
   select jsonb_build_object(
@@ -629,7 +629,7 @@ begin
     'aviso', coalesce(
       nullif(v.tenant_config ->> 'nao_cobramos_texto', ''),
       'Nunca cobramos nenhum valor do credor: nem taxa, nem adiantamento, nem custas. '
-      || 'Se alguem pedir dinheiro em nosso nome, e golpe.'));
+      || 'Se alguém pedir dinheiro em nosso nome, é golpe.'));
 end
 $$;
 
@@ -649,7 +649,7 @@ begin
   end if;
   if v.opt_out_em is not null then
     raise exception using errcode = 'MQ409', message = 'contato_com_oposicao',
-      detail = 'O titular se opos ao contato (LGPD art. 18).';
+      detail = 'O titular se opôs ao contato (LGPD art. 18).';
   end if;
   perform app.auditar(v.tenant_id, 'contatos.revelado', 'contatos', p_contato::text,
                       jsonb_build_object('tipo', v.tipo));

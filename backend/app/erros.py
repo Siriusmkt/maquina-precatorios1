@@ -65,6 +65,10 @@ _STATUS_SQL = {
 }
 
 
+# Classe 08 (conexao) e 57P0x (servidor encerrando): indisponibilidade, nao bug.
+_CONEXAO_PERDIDA = frozenset({"57P01", "57P02", "57P03"})
+
+
 class ErroApi(Exception):
     def __init__(
         self,
@@ -89,6 +93,8 @@ def erro_do_banco(exc: psycopg.Error) -> ErroApi | None:
     if estado in _STATUS_SQL:
         status, codigo = _STATUS_SQL[estado]
         return ErroApi(status, codigo)
+    if estado.startswith("08") or estado in _CONEXAO_PERDIDA:
+        return ErroApi(503, "servico_indisponivel")
     return None
 
 

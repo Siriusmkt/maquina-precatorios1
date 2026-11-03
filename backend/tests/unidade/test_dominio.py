@@ -82,7 +82,7 @@ class TestPreco:
         assert not r.viavel
         assert r.preco_sugerido is None
         assert r.desagio_pct is None
-        assert any("Inviavel" in a for a in r.alertas)
+        assert any("Inviável" in a for a in r.alertas)
 
     def test_acordo_ruim_nao_interfere(self) -> None:
         acordo = AcordoEstatal(desagio=D("0.40"), prazo_meses=D(6), descricao="Edital TJSP")
@@ -131,7 +131,7 @@ class TestPreco:
         r = precificar(_ativo(), SEM_CORRECAO, HOJE)
         rotulos = [p.rotulo for p in r.memoria]
         assert rotulos[0] == "Valor de face"
-        assert rotulos[-1] == "Preco sugerido"
+        assert rotulos[-1] == "Preço sugerido"
         assert r.memoria[-1].valor == r.preco_sugerido
 
     @pytest.mark.parametrize(

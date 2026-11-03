@@ -3,13 +3,15 @@
 from __future__ import annotations
 
 import httpx
+import psycopg
 import pytest
 from fastapi import FastAPI
 
+from app.erros import erro_do_banco
 from app.main import criar_app
 from tests.api.conftest import Ambiente
-from tests.apoio.api import ORIGEM, Navegador, config_de_teste
-from tests.apoio.banco import BancoDeTeste
+from tests.apoio.api import ORIGEM, Navegador, config_de_teste, emitir_jwt
+from tests.apoio.banco import BancoDeTeste, Cenario
 
 ESSENCIAIS = {
     "x-content-type-options": "nosniff",
@@ -143,3 +145,26 @@ async def test_producao_nao_publica_documentacao(banco: BancoDeTeste, redis_url:
             assert (await cliente.get(caminho)).status_code == 404
         hsts = (await cliente.get("/api/saude/vivo")).headers["strict-transport-security"]
         assert "max-age=63072000" in hsts
+
+
+async def test_api_sobrevive_a_conexoes_derrubadas(ambiente: Ambiente, cenario: Cenario) -> None:
+    # Restart ou failover do Postgres: o pool descarta a conexao morta e segue.
+    usuario = cenario.membro(cenario.tenant(), "owner")
+    navegador = ambiente.navegador
+    navegador.http.cookies.set("__Host-mq_sessao", emitir_jwt(usuario))
+    assert (await navegador.http.get("/api/eu")).status_code == 200
+    cenario.sql(
+        "select pg_terminate_backend(pid) from pg_stat_activity"
+        " where usename = 'maquina_api' and datname = current_database()"
+    )
+    for _ in range(3):
+        assert (await navegador.http.get("/api/eu")).status_code == 200
+
+
+def test_queda_de_conexao_vira_503() -> None:
+    class Falsa(psycopg.OperationalError):
+        sqlstate = "57P01"
+
+    erro = erro_do_banco(Falsa("terminating connection due to administrator command"))
+    assert erro is not None
+    assert (erro.status, erro.codigo) == (503, "servico_indisponivel")

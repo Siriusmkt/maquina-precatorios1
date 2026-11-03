@@ -72,6 +72,8 @@ def configurar_logs(nivel: str = "INFO") -> None:
     raiz.setLevel(nivel)
     # O log de acesso padrao do uvicorn inclui query string; usamos o nosso.
     logging.getLogger("uvicorn.access").disabled = True
+    # Cada chamada ao Supabase Auth geraria uma linha INFO; so avisos interessam.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     for nome in ("uvicorn", "uvicorn.error"):
         logging.getLogger(nome).handlers[:] = []
         logging.getLogger(nome).propagate = True
