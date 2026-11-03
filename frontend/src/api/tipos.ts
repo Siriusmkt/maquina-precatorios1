@@ -231,6 +231,7 @@ export interface LeadDetalhe {
   }[];
   contatos: ContatoDoLead[];
   conversa: Conversa;
+  resolver: ResolverDoLead;
   transicoes: Estagio[];
   papel: Papel;
 }
@@ -371,4 +372,68 @@ export interface Preferencias {
   personalizadas: string[];
   pode_editar: boolean;
   pode_editar_alcada: boolean;
+}
+
+export type StatusEnriquecimento = "pendente" | "concluido" | "sem_resultado" | "sem_documento" | "falhou" | "cancelado";
+
+export interface Achados {
+  telefones?: number;
+  emails?: number;
+  enderecos?: number;
+  novos?: number;
+}
+
+export interface ResolverDoLead {
+  bureau_ligado: boolean;
+  cpf: "processo" | "equipe" | null;
+  ultimo: { status: StatusEnriquecimento; achados: Achados | null; erro: string | null; criado_em: string; concluido_em: string | null } | null;
+}
+
+export interface IntegracaoBureau {
+  configurada: boolean;
+  ativa: boolean;
+  provedor: string;
+  automatico: boolean;
+  limite_dia: number;
+  uso_hoje: number;
+  erro: string | null;
+  atualizado_em: string | null;
+}
+
+export interface PedidoDeEnriquecimento {
+  id: string;
+  lead_id: string;
+  credor: string | null;
+  status: StatusEnriquecimento;
+  achados: Achados | null;
+  erro: string | null;
+  automatico: boolean;
+  criado_em: string;
+  concluido_em: string | null;
+}
+
+export interface PainelResolver {
+  bureau: IntegracaoBureau | null;
+  pode_gerir: boolean;
+  leads_sem_telefone: number;
+  leads_sem_cpf: number;
+  recentes: PedidoDeEnriquecimento[];
+}
+
+export interface LinhaImportada {
+  referencia?: string;
+  cpf?: string;
+  telefones: string[];
+  emails: string[];
+  enderecos: string[];
+}
+
+export interface ResultadoImportacao {
+  linhas: number;
+  casadas: number;
+  sem_lead: number;
+  contatos_novos: number;
+  repetidos: number;
+  invalidos: number;
+  leads_enriquecidos: number;
 }

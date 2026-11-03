@@ -99,6 +99,12 @@ async function main() {
   await pagina.waitForTimeout(900);
   await foto("07b-lead-conversa");
 
+  // Resolver: bureau, planilha e buscas
+  await pagina.getByRole("link", { name: "Resolver" }).first().click();
+  await pagina.getByText("Planilha de qualquer bureau").waitFor();
+  await pagina.waitForTimeout(2000);
+  await foto("07d-resolver", true);
+
   // Contato: cadencias e WhatsApp oficial
   await pagina.getByRole("link", { name: "Contato" }).first().click();
   await pagina.getByText("Regras que a máquina nunca quebra").waitFor();

@@ -153,3 +153,12 @@ export const NOMES_CANAL: Record<string, string> = {
   portal: "Portal",
   advogado: "Advogado",
 };
+
+/** "123.456.789-09" enquanto digita. */
+export function mascaraCpf(valor: string): string {
+  const d = valor.replace(/\D/g, "").slice(0, 11);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
+  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}

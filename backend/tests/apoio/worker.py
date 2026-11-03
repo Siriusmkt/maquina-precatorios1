@@ -256,3 +256,54 @@ class MetaFalsa:
     def corpos(self) -> list[dict[str, Any]]:
 
         return [json.loads(p.content) for p in self.pedidos]
+
+
+# --------------------------------------------------------------------- bureau (BigDataCorp)
+URL_BUREAU = "https://bureau.teste.local/pessoas"
+
+
+def resposta_bigdatacorp(
+    *,
+    telefones: list[dict[str, Any]] | None = None,
+    emails: list[dict[str, Any]] | None = None,
+    enderecos: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Resposta no formato esperado da API "pessoas" (dados ficticios)."""
+    pessoa: dict[str, Any] = {"MatchKeys": "doc{00000000000}"}
+    if telefones is not None:
+        pessoa["ExtendedPhones"] = {"Phones": telefones, "TotalPhones": len(telefones)}
+    if emails is not None:
+        pessoa["ExtendedEmails"] = {"Emails": emails}
+    if enderecos is not None:
+        pessoa["ExtendedAddresses"] = {"Addresses": enderecos}
+    status = {d: [{"Code": 0, "Message": "OK"}] for d in ("phones_extended", "emails_extended", "addresses_extended")}
+    return {"Result": [pessoa], "QueryId": "q-1", "ElapsedMilliseconds": 42, "Status": status}
+
+
+def telefone_bdc(numero: str, ddd: str = "11", **extra: Any) -> dict[str, Any]:
+    return {"Number": numero, "AreaCode": ddd, "CountryCode": "55", "Type": "MOBILE", **extra}
+
+
+def endereco_bdc(**extra: Any) -> dict[str, Any]:
+    base = {
+        "Typology": "RUA", "Title": "", "AddressMain": "DAS FLORES", "Number": "100", "Complement": "APTO 12",
+        "Neighborhood": "JARDIM EXEMPLO", "ZipCode": "01234567", "City": "SAO PAULO", "State": "SP", "Type": "HOME",
+    }  # fmt: skip
+    return {**base, **extra}
+
+
+@dataclass
+class BureauFalso:
+    """API "pessoas" falsa: guarda os pedidos e responde o que o teste mandar."""
+
+    respostas: list[httpx.Response] = field(default_factory=list)
+    pedidos: list[httpx.Request] = field(default_factory=list)
+
+    def __call__(self, pedido: httpx.Request) -> httpx.Response:
+        self.pedidos.append(pedido)
+        if self.respostas:
+            return self.respostas.pop(0)
+        return httpx.Response(200, json=resposta_bigdatacorp(telefones=[]))
+
+    def cpfs(self) -> list[str]:
+        return [json.loads(p.content)["q"][4:-1] for p in self.pedidos]

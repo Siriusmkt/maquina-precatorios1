@@ -68,6 +68,11 @@ MENSAGENS: dict[str, str] = {
     "cadencia_pausada": "Essa cadência está pausada.",
     "sem_endereco": "Cadastre o endereço do credor nos contatos para gerar a carta.",
     "sem_contato_publico": "Defina o contato oficial em Equipe para gerar cartas: é por ele que o credor responde.",
+    # Resolver
+    "bureau_desligado": "O bureau de dados não está ligado. Configure na tela Resolver.",
+    "credor_sem_cpf": "O credor não tem CPF no processo. Informe o CPF para buscar os contatos.",
+    "enriquecimento_em_andamento": "Já existe uma busca em andamento para este credor.",
+    "cpf_invalido": "CPF inválido. Confira os números.",
     "contato_ilegivel": "Não foi possível ler este contato. Cadastre de novo.",
 }
 

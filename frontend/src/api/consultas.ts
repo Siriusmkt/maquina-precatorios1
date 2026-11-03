@@ -12,15 +12,19 @@ import type {
   Equipe,
   Estagio,
   FiltrosRadar,
+  IntegracaoBureau,
   IntegracaoWhatsApp,
   LeadDetalhe,
+  LinhaImportada,
   LeadResumo,
   Painel,
   PaginaRadar,
   Perfil,
   Precificacao,
   Preferencias,
+  PainelResolver,
   PassoCadencia,
+  ResultadoImportacao,
   ResumoRadar,
   Tarefa,
   VerificacaoPublica,
@@ -38,6 +42,8 @@ export const chaves = {
   whatsapp: (t: string) => ["whatsapp", t] as const,
   cadencias: (t: string) => ["cadencias", t] as const,
   tarefas: (t: string) => ["tarefas", t] as const,
+  resolver: (t: string) => ["resolver", t] as const,
+  bureau: (t: string) => ["bureau", t] as const,
 };
 
 function consulta(filtros: FiltrosRadar, cursor?: string): string {
@@ -81,8 +87,18 @@ export function useLeads(tenant: string) {
   return useQuery({ queryKey: chaves.leads(tenant), queryFn: () => api<LeadResumo[]>(`/t/${tenant}/leads`) });
 }
 
+/** Enquanto algo esta na fila do worker (mensagem, busca no bureau), a tela se atualiza sozinha. */
+export function temAlgoNaFila(d: LeadDetalhe | undefined): boolean {
+  if (!d) return false;
+  return d.resolver?.ultimo?.status === "pendente" || d.conversa?.envios.some((e) => e.status === "pendente") === true;
+}
+
 export function useLead(tenant: string, id: string) {
-  return useQuery({ queryKey: chaves.lead(tenant, id), queryFn: () => api<LeadDetalhe>(`/t/${tenant}/leads/${id}`) });
+  return useQuery({
+    queryKey: chaves.lead(tenant, id),
+    queryFn: () => api<LeadDetalhe>(`/t/${tenant}/leads/${id}`),
+    refetchInterval: (q) => (temAlgoNaFila(q.state.data) ? 4000 : false),
+  });
 }
 
 function useInvalidar(tenant: string) {
@@ -335,6 +351,59 @@ export function useEditarTarefas(tenant: string) {
     onSuccess: depois,
   });
   return { criar, concluir };
+}
+
+// ------------------------------------------------------------------ resolver
+export function useResolver(tenant: string) {
+  return useQuery({
+    queryKey: chaves.resolver(tenant),
+    queryFn: () => api<PainelResolver>(`/t/${tenant}/resolver`),
+    refetchInterval: (q) => (q.state.data?.recentes.some((r) => r.status === "pendente") ? 5000 : false),
+  });
+}
+
+export function useBureau(tenant: string, ligado: boolean) {
+  return useQuery({
+    queryKey: chaves.bureau(tenant),
+    queryFn: () => api<IntegracaoBureau>(`/t/${tenant}/integracoes/bureau`),
+    enabled: ligado,
+  });
+}
+
+export function useSalvarBureau(tenant: string) {
+  const cliente = useQueryClient();
+  const depois = () => {
+    void cliente.invalidateQueries({ queryKey: chaves.bureau(tenant) });
+    void cliente.invalidateQueries({ queryKey: chaves.resolver(tenant) });
+  };
+  const salvar = useMutation({
+    mutationFn: (v: { automatico: boolean; limite_dia: number; access_token?: string; token_id?: string }) =>
+      api<void>(`/t/${tenant}/integracoes/bureau`, { metodo: "PUT", corpo: v }),
+    onSuccess: depois,
+  });
+  const desligar = useMutation({
+    mutationFn: () => api<void>(`/t/${tenant}/integracoes/bureau`, { metodo: "DELETE" }),
+    onSuccess: depois,
+  });
+  return { salvar, desligar };
+}
+
+export function useBuscaNoBureau(tenant: string, lead: string) {
+  const invalidar = useInvalidar(tenant);
+  const depois = () => invalidar(chaves.lead(tenant, lead), chaves.resolver(tenant));
+  const informarCpf = useMutation({
+    mutationFn: (cpf: string) => api<void>(`/t/${tenant}/leads/${lead}/documento`, { metodo: "PUT", corpo: { cpf } }),
+    onSuccess: depois,
+  });
+  const buscar = useMutation({
+    mutationFn: () => api<{ id: string }>(`/t/${tenant}/leads/${lead}/enriquecer`, { metodo: "POST" }),
+    onSuccess: depois,
+  });
+  return { informarCpf, buscar };
+}
+
+export function importarLote(tenant: string, linhas: LinhaImportada[]): Promise<ResultadoImportacao> {
+  return api<ResultadoImportacao>(`/t/${tenant}/resolver/importacao`, { metodo: "POST", corpo: { linhas } });
 }
 
 // ------------------------------------------------------------------ senha (paginas publicas)

@@ -25,6 +25,7 @@ from app.consultas import leads as q_leads
 from app.consultas.tenant import carregar_tenant
 from app.documentos.carta import DadosCarta
 from app.documentos.carta import gerar_pdf as gerar_carta
+from app.dominio import contatos
 from app.dominio.whatsapp import (
     IDIOMA,
     JANELA,
@@ -475,7 +476,9 @@ async def gerar_carta_do_lead(
     if revelado is None:  # pragma: no cover - revelar_contato levanta erro em vez de nao devolver
         raise ErroApi(404, "contato_nao_encontrado")
     try:
-        endereco_texto = rec.cifra.decifrar(bytes(revelado["valor_cifrado"]), f"contatos:{tenant_id}:endereco")
+        endereco_texto = rec.cifra.decifrar(
+            bytes(revelado["valor_cifrado"]), contatos.contexto_da_cifra(tenant_id, "endereco")
+        )
     except FalhaDeCifra as exc:
         raise ErroApi(409, "contato_ilegivel") from exc
     base = rec.config.url_publica

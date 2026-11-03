@@ -7,6 +7,8 @@ python -m worker extrair [--limite 50]
 python -m worker sonda [TJSP]         testa o acesso ao DJEN e mostra o formato (sem dados pessoais)
 python -m worker sonda-whatsapp <id-do-cliente>
                                       confere o token e o numero do WhatsApp na Meta (nao envia nada)
+python -m worker sonda-bureau <id-do-cliente> <cpf>
+                                      uma consulta real ao bureau; mostra so o formato e as contagens
 """
 
 from __future__ import annotations
@@ -16,6 +18,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import re
 import signal
 import sys
 import uuid
@@ -25,6 +28,7 @@ from pathlib import Path
 
 import httpx
 
+from app.dominio.documento import cpf_valido
 from app.logs import configurar_logs
 from worker.config import ConfiguracoesWorker
 from worker.djen import DjenBloqueado, ErroDjen
@@ -68,6 +72,7 @@ async def rodar(config: ConfiguracoesWorker) -> None:
             await asyncio.gather(
                 repetir(servicos.pipeline.ciclo, parar, config.ciclo_s, "ciclo"),
                 repetir(servicos.mensageiro.ciclo, parar, config.mensageiro_s, "mensageiro"),
+                repetir(servicos.resolvedor.ciclo, parar, config.resolvedor_s, "resolvedor"),
             )
     finally:
         parar.set()
@@ -106,6 +111,13 @@ async def sonda(
     return 0
 
 
+def cpf_do_argumento(valor: str) -> str:
+    cpf = re.sub(r"\D", "", valor)
+    if not cpf_valido(cpf):
+        raise argparse.ArgumentTypeError("CPF invalido")
+    return cpf
+
+
 def principal(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="python -m worker")
     sub = parser.add_subparsers(dest="comando")
@@ -120,6 +132,9 @@ def principal(argv: list[str] | None = None) -> int:
     p_sonda.add_argument("tribunal", nargs="?", default="TJSP")
     p_sonda_wa = sub.add_parser("sonda-whatsapp")
     p_sonda_wa.add_argument("tenant", type=uuid.UUID)
+    p_sonda_bureau = sub.add_parser("sonda-bureau")
+    p_sonda_bureau.add_argument("tenant", type=uuid.UUID)
+    p_sonda_bureau.add_argument("cpf", type=cpf_do_argumento)
     args = parser.parse_args(argv)
 
     configurar_logs()
@@ -133,8 +148,11 @@ def principal(argv: list[str] | None = None) -> int:
             return await sonda(config, args.tribunal)
         async with montar(config) as servicos:
             pipeline = servicos.pipeline
-            if args.comando == "sonda-whatsapp":
-                relatorio = await servicos.mensageiro.conferir_integracao(args.tenant)
+            if args.comando in ("sonda-whatsapp", "sonda-bureau"):
+                if args.comando == "sonda-whatsapp":
+                    relatorio = await servicos.mensageiro.conferir_integracao(args.tenant)
+                else:
+                    relatorio = await servicos.resolvedor.conferir_integracao(args.tenant, args.cpf)
                 print(json.dumps(relatorio, ensure_ascii=False, indent=2))
                 return 0 if relatorio.get("acesso") == "ok" else 1
             if args.comando == "coletar":

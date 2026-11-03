@@ -129,7 +129,40 @@ select status, count(*), max(recebido_em) from app.whatsapp_recebidos group by 1
 select tenant_id, erro, atualizado_em from app.integracoes where erro is not null;
 ```
 
-## 6. Checklist depois do deploy
+## 6. Resolver (achar telefone e endereço do credor)
+
+Duas formas, as duas gravando os contatos cifrados com origem "bureau" e base legal "legítimo interesse":
+
+**Bureau por API (BigDataCorp).** A busca é sempre pelo CPF (nome sozinho traz homônimo). O CPF vem do processo (quando o Leitor IA acha) ou a equipe informa na tela do lead.
+
+1. **Rede.** O `worker` precisa de saída HTTPS para `plataforma.bigdatacorp.com.br`.
+2. **Contrato.** Com o BigDataCorp, peça acesso à API de **Pessoas** com os datasets `phones_extended`, `emails_extended` e `addresses_extended`, e pegue o **AccessToken** e o **TokenId**.
+3. **No sistema**, tela **Resolver** (dono ou gestor): cole as duas chaves, defina o **teto diário** de consultas (controle de custo) e, se quiser, ligue **Buscar sozinho** (lead qualificado com CPF e sem telefone entra na fila; no máximo uma busca por credor a cada 30 dias).
+4. **Confira do servidor antes de liberar para a equipe** (uma consulta real com um CPF que você pode consultar, por exemplo o seu; a saída mostra só o formato e as contagens, nenhum dado pessoal):
+
+   ```bash
+   docker compose run --rm worker python -m worker sonda-bureau <id-do-cliente> <cpf>
+   ```
+
+   - `"acesso": "ok"` com `reconhecidos` acima de zero: tudo certo.
+   - `"acesso": "ok"` mas `reconhecidos` zerado com `itens_recebidos` acima de zero: o contrato devolve os campos com outros nomes. Os nomes aparecem em `campos_do_telefone`, `campos_do_email` e `campos_do_endereco`; o ajuste é no `worker/bureau.py` (função `ler_resposta`).
+   - `credencial_invalida`: chaves erradas ou sem permissão para esses datasets.
+
+**Planilha de qualquer bureau.** Na mesma tela: **Baixar CSV** (referência do lead, nome e CPF dos credores das etapas escolhidas; a exportação entra na auditoria), rode no bureau que já usa e **importe** o CSV que voltar. As colunas são reconhecidas pelo nome (CPF, telefone, celular, e-mail, logradouro, número, bairro, cidade/município, UF, CEP, endereço) e dá para corrigir na tela antes de importar. A importação só casa com credores dos leads do próprio cliente; repetido não duplica e oposição anterior continua valendo.
+
+Acompanhamento:
+
+```sql
+-- fila e resultados das buscas por cliente
+select tenant_id, status, count(*) from app.enriquecimentos group by 1, 2 order by 1, 2;
+-- consultas pagas hoje (o teto diário conta estas)
+select tenant_id, count(*) from app.enriquecimentos
+ where status in ('concluido', 'sem_resultado', 'falhou')
+   and concluido_em >= date_trunc('day', now() at time zone 'America/Sao_Paulo') at time zone 'America/Sao_Paulo'
+ group by 1;
+```
+
+## 7. Checklist depois do deploy
 
 ```bash
 # cabeçalhos de segurança e CSP

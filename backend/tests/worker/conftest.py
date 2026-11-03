@@ -24,7 +24,7 @@ TABELAS_DO_CORE = (
     "core.processo_partes, core.partes, core.processos, core.advogados, core.entes_devedores, "
     # filas do mensageiro sao globais (todas as empresas): cada teste comeca com elas vazias
     "app.whatsapp_recebidos, app.whatsapp_envios, app.integracoes, app.tarefas, app.interacoes, "
-    "app.leads, app.cadencias, app.contatos"
+    "app.leads, app.cadencias, app.contatos, app.enriquecimentos, app.documentos_informados"
 )
 
 

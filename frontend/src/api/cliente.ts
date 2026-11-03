@@ -129,8 +129,8 @@ export async function api<T>(caminho: string, opcoes: Opcoes = {}): Promise<T> {
  * Baixa um arquivo da API (PDF) e entrega como download. POST quando gerar o
  * arquivo tambem registra algo (a carta vira interacao): leva o CSRF como o resto.
  */
-export async function baixar(caminho: string, metodo: "GET" | "POST" = "GET"): Promise<void> {
-  const buscar = () => enviar(caminho, { metodo });
+export async function baixar(caminho: string, metodo: "GET" | "POST" = "GET", corpo?: unknown): Promise<void> {
+  const buscar = () => enviar(caminho, { metodo, corpo });
   let resposta = await buscar();
   if (resposta.status === 403 && (await erroDe(resposta.clone())).codigo === "csrf_invalido") {
     esquecerCsrf();
@@ -138,7 +138,7 @@ export async function baixar(caminho: string, metodo: "GET" | "POST" = "GET"): P
   }
   if (resposta.status === 401 && (await renovarSessao())) resposta = await buscar();
   if (!resposta.ok) throw await erroDe(resposta);
-  const nome = /filename="([^"]+)"/.exec(resposta.headers.get("content-disposition") ?? "")?.[1] ?? "documento.pdf";
+  const nome = /filename="([^"]+)"/.exec(resposta.headers.get("content-disposition") ?? "")?.[1] ?? "documento";
   const url = URL.createObjectURL(await resposta.blob());
   const link = document.createElement("a");
   link.href = url;

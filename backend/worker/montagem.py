@@ -1,4 +1,4 @@
-"""Monta as dependencias do worker: pool do Postgres, cliente do DJEN e Leitor IA."""
+"""Monta as dependencias do worker: pool do Postgres, DJEN, Leitor IA, WhatsApp e bureau."""
 
 from __future__ import annotations
 
@@ -14,11 +14,13 @@ from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
+from worker.bureau import ClienteBigDataCorp
 from worker.config import ConfiguracoesWorker
 from worker.djen import ClienteDjen
 from worker.leitor import Extrator, ExtratorClaude
 from worker.mensageiro import Mensageiro
 from worker.pipeline import Pipeline, Pool, agora_sp
+from worker.resolvedor import Resolvedor
 from worker.whatsapp import ClienteWhatsApp
 
 log = logging.getLogger("maquina.worker")
@@ -69,6 +71,7 @@ async def cliente_djen(
 class Servicos:
     pipeline: Pipeline
     mensageiro: Mensageiro
+    resolvedor: Resolvedor
 
 
 @contextlib.asynccontextmanager
@@ -77,6 +80,7 @@ async def montar(
     *,
     transporte_djen: httpx.AsyncBaseTransport | None = None,
     transporte_whatsapp: httpx.AsyncBaseTransport | None = None,
+    transporte_bureau: httpx.AsyncBaseTransport | None = None,
     extrator: Extrator | None = None,
 ) -> AsyncIterator[Servicos]:
     """Abre e fecha tudo. Os transportes e o extrator opcionais existem para os testes."""
@@ -107,4 +111,12 @@ async def montar(
         )
         pilha.push_async_callback(http_meta.aclose)
         mensageiro = Mensageiro(pool, config, ClienteWhatsApp(http_meta), relogio=agora_sp)
-        yield Servicos(pipeline=Pipeline(pool, config, djen, extrator), mensageiro=mensageiro)
+        http_bureau = httpx.AsyncClient(
+            timeout=httpx.Timeout(40.0, connect=10.0),
+            headers={"user-agent": AGENTE},
+            follow_redirects=False,
+            transport=transporte_bureau,
+        )
+        pilha.push_async_callback(http_bureau.aclose)
+        resolvedor = Resolvedor(pool, config, ClienteBigDataCorp(http_bureau, config.bigdatacorp_url), relogio=agora_sp)
+        yield Servicos(pipeline=Pipeline(pool, config, djen, extrator), mensageiro=mensageiro, resolvedor=resolvedor)

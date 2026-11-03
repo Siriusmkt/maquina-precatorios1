@@ -37,6 +37,7 @@ import { cn } from "@/lib/cn";
 import { NOMES_CANAL, NOMES_EVENTO, dataCurta, dataHoraCurta, percentual, reais } from "@/lib/formato";
 import { CINEMA } from "@/lib/movimento";
 import { telefoneLegivel } from "../contato/regras";
+import { BuscaNoBureau } from "./Busca";
 
 function Cabecalho({ icone, titulo, extra }: { icone: ReactNode; titulo: string; extra?: ReactNode }) {
   return (
@@ -362,6 +363,7 @@ export function BlocoContatos({ tenant, d }: { tenant: string; d: LeadDetalhe })
           )
         }
       />
+      <BuscaNoBureau tenant={tenant} d={d} />
       <AnimatePresence>{novo && <NovoContato tenant={tenant} lead={d.lead.id} aoTerminar={() => setNovo(false)} />}</AnimatePresence>
       <ul className="space-y-2">
         {d.contatos.map((c) => (

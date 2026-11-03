@@ -20,6 +20,7 @@ from decimal import Decimal
 import psycopg
 
 from app.config import Configuracoes
+from app.dominio.contatos import CONTEXTO_DOCUMENTO_DO_PROCESSO
 from app.dominio.preco import Parametros, PremissaInvalida
 from app.seguranca.cripto import CifraDeCampo, indice_cego
 from app.servicos.avaliacao import avaliar_preco, avaliar_score
@@ -101,6 +102,23 @@ def _cnj(tribunal: str) -> str:
 
 def _nome() -> str:
     return f"{SORTE.choice(NOMES)} {SORTE.choice(SOBRENOMES)} {SORTE.choice(SOBRENOMES)}"
+
+
+def _cpf() -> str:
+    """CPF ficticio com digitos verificadores corretos."""
+    base = [SORTE.randint(0, 9) for _ in range(9)]
+    for tamanho in (9, 10):
+        resto = sum(d * p for d, p in zip(base, range(tamanho + 1, 1, -1), strict=True)) % 11
+        base.append(0 if resto < 2 else 11 - resto)
+    return "".join(map(str, base))
+
+
+def _documento(cifra: CifraDeCampo, chave_indice: bytes) -> tuple[str | None, bytes | None]:
+    """Sete em cada dez credores com CPF no processo (como quando a publicacao traz o documento)."""
+    if SORTE.random() > 0.7:
+        return None, None
+    cpf = _cpf()
+    return indice_cego(chave_indice, "cpf", cpf), cifra.cifrar(cpf, CONTEXTO_DOCUMENTO_DO_PROCESSO)
 
 
 def _valor() -> Decimal:
@@ -194,7 +212,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915 - roteiro linear de carga de dados
             )
             falecido = SORTE.random() < 0.12
             c.execute(
-                "insert into core.partes (nome, tipo, falecido) values (%s, 'pf', %s) returning id", [_nome(), falecido]
+                """insert into core.partes (nome, tipo, falecido, documento_hash, documento_cifrado)
+                   values (%s, 'pf', %s, %s, %s) returning id""",
+                [_nome(), falecido, *_documento(cifra, chave_indice)],
             )
             credor = c.fetchone()[0]  # type: ignore[index]
             c.execute(

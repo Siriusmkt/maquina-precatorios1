@@ -6,7 +6,6 @@ usuario, checagem de membro do tenant (404 se nao for) e papel quando altera.
 
 from __future__ import annotations
 
-import re
 import uuid
 from datetime import date, datetime, timedelta
 from decimal import Decimal
@@ -22,21 +21,22 @@ from app.banco.sessao import Conexao
 from app.consultas import leads as q_leads
 from app.consultas import radar as q_radar
 from app.consultas.tenant import TenantAtivo, carregar_tenant
+from app.dominio import contatos
 from app.dominio.cnj import formatar_cnj
-from app.dominio.endereco import EnderecoInvalido, chave_do_endereco, normalizar_endereco
+from app.dominio.contatos import ContatoNormalizado, TipoContato
+from app.dominio.endereco import EnderecoInvalido, normalizar_endereco
 from app.dominio.funil import Estagio, TransicaoNegada, transicoes_permitidas, validar_transicao
 from app.dominio.preco import Precificacao, PremissaInvalida
 from app.dominio.score import Score
 from app.erros import ErroApi
 from app.recursos import aplicar_limite, contexto
-from app.seguranca.cripto import FalhaDeCifra, indice_cego, normalizar_email, normalizar_telefone
+from app.seguranca.cripto import FalhaDeCifra, indice_cego
 from app.seguranca.limite import RADAR_POR_USUARIO, REVELAR_CONTATO_POR_USUARIO, SIMULADOR_POR_USUARIO
 from app.servicos import orcamento
 from app.servicos.avaliacao import avaliar_preco, avaliar_score
 
 router = APIRouter(prefix="/api/t/{tenant_id}", tags=["espaco"])
 FUSO = ZoneInfo("America/Sao_Paulo")
-EMAIL = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]+")
 
 
 def hoje() -> date:
@@ -114,6 +114,7 @@ class LeadDetalhe(BaseModel):
     verificacoes: list[q_leads.VerificacaoLead]
     contatos: list[q_leads.ContatoLead]
     conversa: q_leads.Conversa
+    resolver: q_leads.ResolverDoLead
     transicoes: list[str]
     papel: str
 
@@ -179,6 +180,7 @@ async def detalhe_lead(
             verificacoes=await q_leads.verificacoes(conn, lead_id),
             contatos=await q_leads.contatos(conn, tenant_id, lead["credor_parte_id"]),
             conversa=await q_leads.conversa(conn, tenant_id, lead_id),
+            resolver=await q_leads.resolver(conn, tenant_id, lead_id),
             transicoes=list(transicoes_permitidas(lead["estagio"], tenant.papel)),
             papel=tenant.papel,
         )
@@ -279,31 +281,20 @@ async def registrar_interacao(
 
 class NovoContato(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-    tipo: Literal["telefone", "email", "endereco"]
+    tipo: TipoContato
     valor: str = Field(min_length=5, max_length=600)
 
 
-def _contexto_cifra(tenant_id: uuid.UUID, tipo: str) -> str:
-    return f"contatos:{tenant_id}:{tipo}"
-
-
-def _normalizar_contato(tipo: str, valor: str) -> tuple[str, str]:
-    """(o que vai cifrado, a forma comparavel que vai para o indice cego)."""
-    if tipo == "telefone":
-        telefone = normalizar_telefone(valor)
-        if not 12 <= len(telefone) <= 13:
-            raise ErroApi(422, "dados_invalidos", "telefone invalido")
-        return telefone, telefone
-    if tipo == "email":
-        email = normalizar_email(valor)
-        if len(email) > 254 or not EMAIL.fullmatch(email):
-            raise ErroApi(422, "dados_invalidos", "e-mail invalido")
-        return email, email
-    try:
-        endereco = normalizar_endereco(valor)
-    except EnderecoInvalido as exc:
-        raise ErroApi(422, "dados_invalidos", str(exc)) from exc
-    return endereco, chave_do_endereco(endereco)
+def _normalizar_contato(tipo: TipoContato, valor: str) -> ContatoNormalizado:
+    if tipo == "endereco":
+        try:
+            normalizar_endereco(valor)  # so para dizer o que esta errado
+        except EnderecoInvalido as exc:
+            raise ErroApi(422, "dados_invalidos", str(exc)) from exc
+    contato = contatos.normalizar(tipo, valor)
+    if contato is None:
+        raise ErroApi(422, "dados_invalidos", "telefone invalido" if tipo == "telefone" else "e-mail invalido")
+    return contato
 
 
 @router.post("/leads/{lead_id}/contatos", status_code=201)
@@ -311,7 +302,7 @@ async def adicionar_contato(
     tenant_id: uuid.UUID, lead_id: uuid.UUID, dados: NovoContato, usuario: Usuario, request: Request, rec: Rec
 ) -> dict[str, uuid.UUID]:
     """Contato informado pelo proprio credor: cifrado antes de tocar o banco."""
-    normalizado, comparavel = _normalizar_contato(dados.tipo, dados.valor)
+    contato = _normalizar_contato(dados.tipo, dados.valor)
     chave_indice = rec.config.chave_indice.get_secret_value().encode()
     async with rec.banco.como_usuario(usuario, contexto(request)) as conn:
         (await carregar_tenant(conn, tenant_id)).exigir_editor()
@@ -325,9 +316,9 @@ async def adicionar_contato(
             [
                 tenant_id,
                 lead["credor_parte_id"],
-                dados.tipo,
-                rec.cifra.cifrar(normalizado, _contexto_cifra(tenant_id, dados.tipo)),
-                indice_cego(chave_indice, dados.tipo, comparavel),
+                contato.tipo,
+                rec.cifra.cifrar(contato.valor, contatos.contexto_da_cifra(tenant_id, contato.tipo)),
+                indice_cego(chave_indice, contato.tipo, contato.comparavel),
             ],
         )
         linha = await cursor.fetchone()
@@ -353,7 +344,7 @@ async def revelar_contato(
     if linha is None or linha["tenant_id"] != tenant_id:
         raise ErroApi(404, "contato_nao_encontrado")
     try:
-        valor = rec.cifra.decifrar(linha["valor_cifrado"], _contexto_cifra(tenant_id, linha["tipo"]))
+        valor = rec.cifra.decifrar(linha["valor_cifrado"], contatos.contexto_da_cifra(tenant_id, linha["tipo"]))
     except FalhaDeCifra as exc:
         raise ErroApi(500, "erro_interno") from exc
     return ContatoRevelado(tipo=linha["tipo"], valor=valor)

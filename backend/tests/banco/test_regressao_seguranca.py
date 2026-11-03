@@ -27,6 +27,8 @@ FUNCOES_DO_USUARIO = {
     "salvar_integracao",
     "desligar_integracao",
     "atualizar_config_integracao",
+    "documentos_para_bureau",
+    "leads_por_documento",
 }
 
 

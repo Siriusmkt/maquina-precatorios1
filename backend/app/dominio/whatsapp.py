@@ -8,6 +8,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Literal
 
+from app.dominio import integracoes
 from app.seguranca.cripto import indice_cego
 
 # Variaveis que um modelo aprovado na Meta pode usar, na ordem dos {{1}}, {{2}}...
@@ -67,7 +68,7 @@ def hashes_do_numero(chave_indice: bytes, numero: str) -> list[str]:
 
 def contexto_segredos(tenant_id: uuid.UUID) -> str:
     """AAD da cifra dos segredos da integracao: o blob copiado para outro cliente nao decifra."""
-    return f"integracoes:{tenant_id}:whatsapp"
+    return integracoes.contexto_segredos(tenant_id, "whatsapp")
 
 
 def token_do_webhook(chave_indice: bytes, tenant_id: uuid.UUID) -> str:

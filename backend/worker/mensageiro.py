@@ -25,6 +25,7 @@ from psycopg import AsyncConnection
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
+from app.dominio.contatos import contexto_da_cifra
 from app.dominio.whatsapp import (
     JANELA,
     contexto_segredos,
@@ -499,7 +500,7 @@ class Mensageiro:
             await self._fechar(conn, envio, status, motivo, resumo)
             return
         try:
-            numero = self._cifra.decifrar(pronto.numero_cifrado, f"contatos:{tenant}:telefone")
+            numero = self._cifra.decifrar(pronto.numero_cifrado, contexto_da_cifra(tenant, "telefone"))
         except FalhaDeCifra:
             await self._fechar(conn, envio, "falhou", "contato_ilegivel", resumo)
             return

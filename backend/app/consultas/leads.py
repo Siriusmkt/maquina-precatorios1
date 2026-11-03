@@ -271,6 +271,44 @@ async def conversa(conn: Conexao, tenant_id: uuid.UUID, lead_id: uuid.UUID) -> C
     )
 
 
+class UltimoEnriquecimento(BaseModel):
+    status: str
+    achados: dict[str, int] | None
+    erro: str | None
+    criado_em: datetime
+    concluido_em: datetime | None
+
+
+class ResolverDoLead(BaseModel):
+    bureau_ligado: bool
+    cpf: str | None  # "processo", "equipe" ou None: de onde vem o CPF (o valor nunca sai do servidor)
+    ultimo: UltimoEnriquecimento | None
+
+
+async def resolver(conn: Conexao, tenant_id: uuid.UUID, lead_id: uuid.UUID) -> ResolverDoLead:
+    cursor = await conn.execute(
+        """select coalesce(i.ativa, false) as bureau_ligado,
+                  case when d.lead_id is not null then 'equipe' when p.tem_documento then 'processo' end as cpf,
+                  (select jsonb_build_object('status', e.status, 'achados', e.achados, 'erro', e.erro,
+                                             'criado_em', e.criado_em, 'concluido_em', e.concluido_em)
+                     from app.enriquecimentos e
+                    where e.tenant_id = l.tenant_id and e.lead_id = l.id
+                    order by e.criado_em desc limit 1) as ultimo
+             from app.leads l
+             left join core.partes p on p.id = l.credor_parte_id
+             left join app.documentos_informados d on d.tenant_id = l.tenant_id and d.lead_id = l.id
+             left join app.integracoes i on i.tenant_id = l.tenant_id and i.tipo = 'bureau'
+            where l.tenant_id = %s and l.id = %s""",
+        [tenant_id, lead_id],
+    )
+    linha = await cursor.fetchone() or {}
+    return ResolverDoLead(
+        bureau_ligado=bool(linha.get("bureau_ligado")),
+        cpf=linha.get("cpf"),
+        ultimo=UltimoEnriquecimento.model_validate(linha["ultimo"]) if linha.get("ultimo") else None,
+    )
+
+
 class Painel(BaseModel):
     funil: list[dict[str, Any]]
     leads_7_dias: int

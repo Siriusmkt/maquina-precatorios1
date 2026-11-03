@@ -13,8 +13,9 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from app.config import _decodificar_chave
 from worker.leitor import Esforco
 
-# So estes hosts podem ser consultados pelos coletores (evita SSRF por configuracao errada).
+# So estes hosts podem ser consultados (evita SSRF por configuracao errada).
 HOSTS_PERMITIDOS = frozenset({"comunicaapi.pje.jus.br"})
+HOSTS_DO_BUREAU = frozenset({"plataforma.bigdatacorp.com.br"})
 
 TERMOS_PADRAO = (
     "requisitório",
@@ -69,6 +70,9 @@ class ConfiguracoesWorker(BaseSettings):
     mensageiro_s: float = Field(default=15.0, ge=2)
     # Endereco publico do app (link de verificacao nas mensagens).
     url_publica: str | None = None
+    # Resolver (bureau): as credenciais de cada cliente ficam cifradas no banco, nao aqui.
+    resolvedor_s: float = Field(default=30.0, ge=2)
+    bigdatacorp_url: str = "https://plataforma.bigdatacorp.com.br/pessoas"
 
     # Cifra do documento (CPF/CNPJ) das partes: as mesmas chaves da API.
     chaves_cifra: dict[int, SecretStr]
@@ -90,6 +94,9 @@ class ConfiguracoesWorker(BaseSettings):
         url = urlparse(self.djen_url)
         if self.ambiente != "teste" and (url.scheme != "https" or url.hostname not in HOSTS_PERMITIDOS):
             raise ValueError("djen_url precisa ser https em um host permitido")
+        bureau = urlparse(self.bigdatacorp_url)
+        if self.ambiente != "teste" and (bureau.scheme != "https" or bureau.hostname not in HOSTS_DO_BUREAU):
+            raise ValueError("bigdatacorp_url precisa ser https em um host permitido")
         if self.url_publica:
             object.__setattr__(self, "url_publica", self.url_publica.rstrip("/"))
             if self.ambiente == "producao" and not self.url_publica.startswith("https://"):
