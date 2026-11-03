@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+*.tsbuildinfo
+playwright-report/
+test-results/
+
+# Segredos e ambiente local (nunca versionar)
+.env
+.env.*
+!.env.exemplo
+*.pem
+*.key
+
+# Diversos
+.DS_Store
+.dev/
