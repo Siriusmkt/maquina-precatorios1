@@ -7,6 +7,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 # So o codigo da aplicacao: dev/ (Auth falso, seed) e tests/ nunca entram na imagem.
 COPY app ./app
+COPY worker ./worker
 
 # ---- runtime: sem compilador, sem uv, usuario sem privilegio ----
 FROM python:3.13-slim
@@ -18,5 +19,6 @@ USER 10001
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
   CMD ["python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/api/saude/vivo', timeout=2).status == 200 else 1)"]
+# Padrao: a API. O worker usa a mesma imagem com `python -m worker` (veja docker-compose.yml).
 # O IP real e resolvido pela propria API (MAQUINA_PROXIES_CONFIAVEIS); o uvicorn nao reescreve nada.
 CMD ["uvicorn", "app.main:criar_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--no-server-header", "--no-proxy-headers", "--workers", "2"]

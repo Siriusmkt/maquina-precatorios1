@@ -11,6 +11,7 @@ Cria um banco descartavel por sessao de testes, aplica o stub do Supabase
 from __future__ import annotations
 
 import json
+import os
 import secrets
 import uuid
 from collections.abc import Iterator
@@ -22,6 +23,7 @@ from pathlib import Path
 from typing import Any
 
 import psycopg
+import pytest
 from psycopg import sql
 from psycopg.conninfo import conninfo_to_dict, make_conninfo
 
@@ -73,6 +75,27 @@ def criar_banco(dsn_servidor: str) -> tuple[BancoDeTeste, str]:
 def remover_banco(dsn_servidor: str, nome: str) -> None:
     with psycopg.connect(dsn_servidor, autocommit=True) as c:
         c.execute(sql.SQL("drop database if exists {} with (force)").format(sql.Identifier(nome)))
+
+
+DSN_PADRAO = "postgresql://postgres@localhost:54329/postgres"
+
+
+@contextmanager
+def banco_descartavel() -> Iterator[BancoDeTeste]:
+    """Banco novo com todas as migracoes; apagado no fim."""
+    dsn = os.environ.get("TEST_DATABASE_URL", DSN_PADRAO)
+    try:
+        psycopg.connect(dsn, connect_timeout=3).close()
+    except psycopg.OperationalError as exc:  # pragma: no cover - mensagem de ajuda
+        pytest.exit(
+            f"Postgres de teste indisponivel ({exc}).\nRode scripts/pg-teste.sh start ou defina TEST_DATABASE_URL.",
+            returncode=2,
+        )
+    instancia, nome = criar_banco(dsn)
+    try:
+        yield instancia
+    finally:
+        remover_banco(dsn, nome)
 
 
 @contextmanager

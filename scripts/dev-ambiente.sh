@@ -40,6 +40,10 @@ export MAQUINA_CHAVE_INDICE='$CHAVE_INDICE'
 EOF
   echo "Criado $ARQ_ENV"
 fi
+# Worker (coleta + Leitor IA): acrescentado tambem em arquivos gerados antes dele existir.
+if ! grep -q MAQUINA_WORKER_DATABASE_URL "$ARQ_ENV"; then
+  echo "export MAQUINA_WORKER_DATABASE_URL=${URL_SERVIDOR%/postgres}/maquina_dev?user=maquina_worker" >> "$ARQ_ENV"
+fi
 
 # shellcheck disable=SC1090
 source "$ARQ_ENV"
@@ -52,4 +56,6 @@ Pronto. Em terminais separados (cada um com: source .dev/dev.env):
   cd backend && uv run uvicorn dev.auth_local:app --host 127.0.0.1 --port 9999
   make dev-api
   make dev-front        -> http://localhost:5173  (login: gestor@demo.local / demo-precatorios-2026)
+Opcional, coleta real do DJEN para o banco local (Leitor IA desligado por padrao):
+  make dev-worker
 EOF

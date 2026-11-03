@@ -1,10 +1,10 @@
 # Atalhos de desenvolvimento. Requer: uv, node 22, Postgres 16 e redis-server locais.
-.PHONY: testes testes-banco testes-api testes-front lint banco-teste dev-api dev-front auditoria
+.PHONY: testes testes-banco testes-api testes-worker testes-front lint banco-teste dev-api dev-front dev-worker auditoria
 
 banco-teste:
 	scripts/pg-teste.sh start
 
-testes: lint testes-banco testes-api testes-front
+testes: lint testes-banco testes-api testes-worker testes-front
 
 testes-banco: banco-teste
 	cd backend && uv run pytest tests/banco
@@ -12,11 +12,14 @@ testes-banco: banco-teste
 testes-api: banco-teste
 	cd backend && uv run pytest tests/api tests/unidade
 
+testes-worker: banco-teste
+	cd backend && uv run pytest tests/worker
+
 testes-front:
 	cd frontend && npx tsc --noEmit -p . && npx vitest run && npm run build
 
 lint:
-	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app
+	cd backend && uv run ruff check . && uv run ruff format --check . && uv run mypy app worker
 
 auditoria:
 	cd backend && uv export --format requirements-txt --no-hashes --no-dev > /tmp/req.txt && uvx pip-audit -r /tmp/req.txt
@@ -27,3 +30,6 @@ dev-api:
 
 dev-front:
 	cd frontend && npx vite
+
+dev-worker:
+	cd backend && uv run python -m worker

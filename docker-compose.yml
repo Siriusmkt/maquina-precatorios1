@@ -1,6 +1,9 @@
 # Producao/homologacao (Easypanel ou qualquer Docker). O Postgres e o Auth
-# sao os do Supabase (self-hosted); aqui sobem API, front+proxy e Redis.
+# sao os do Supabase (self-hosted); aqui sobem API, worker, front+proxy e Redis.
 # Segredos vem do arquivo .env (copie de .env.exemplo; NUNCA versione o .env).
+# Menor privilegio: cada servico recebe SO as variaveis listadas abaixo (sem
+# env_file). A API nao ve a chave da Anthropic nem a senha do maquina_worker;
+# o worker nao ve os segredos do Auth. Variavel nova? Liste-a no servico certo.
 
 x-endurecido: &endurecido
   read_only: true
@@ -8,17 +11,62 @@ x-endurecido: &endurecido
   security_opt: ["no-new-privileges:true"]
   restart: unless-stopped
 
+# Chaves de cifra e de indice cego: as mesmas na API e no worker (o worker
+# cifra o CPF/CNPJ que a API decifra).
+x-chaves: &chaves
+  MAQUINA_CHAVES_CIFRA: ${MAQUINA_CHAVES_CIFRA:?defina MAQUINA_CHAVES_CIFRA}
+  MAQUINA_CHAVE_CIFRA_ATIVA: ${MAQUINA_CHAVE_CIFRA_ATIVA:?defina MAQUINA_CHAVE_CIFRA_ATIVA}
+  MAQUINA_CHAVE_INDICE: ${MAQUINA_CHAVE_INDICE:?defina MAQUINA_CHAVE_INDICE}
+
 services:
   api:
     <<: *endurecido
     build: ./backend
-    env_file: .env
     environment:
+      <<: *chaves
       MAQUINA_AMBIENTE: producao
+      MAQUINA_DATABASE_URL: ${MAQUINA_DATABASE_URL:?defina MAQUINA_DATABASE_URL}
+      MAQUINA_DB_PREPARED_STATEMENTS: ${MAQUINA_DB_PREPARED_STATEMENTS:-}
       MAQUINA_REDIS_URL: redis://:${REDIS_SENHA:?defina REDIS_SENHA}@redis:6379/0
+      MAQUINA_SUPABASE_URL: ${MAQUINA_SUPABASE_URL:?defina MAQUINA_SUPABASE_URL}
+      MAQUINA_SUPABASE_ANON_KEY: ${MAQUINA_SUPABASE_ANON_KEY:?defina MAQUINA_SUPABASE_ANON_KEY}
+      MAQUINA_SUPABASE_JWT_SECRET: ${MAQUINA_SUPABASE_JWT_SECRET:-}
+      MAQUINA_ORIGENS_PERMITIDAS: ${MAQUINA_ORIGENS_PERMITIDAS:?defina MAQUINA_ORIGENS_PERMITIDAS}
+      MAQUINA_COOKIE_SEGURO: ${MAQUINA_COOKIE_SEGURO:-}
+      MAQUINA_SESSAO_RENOVACAO_DIAS: ${MAQUINA_SESSAO_RENOVACAO_DIAS:-}
+      MAQUINA_PROXIES_CONFIAVEIS: ${MAQUINA_PROXIES_CONFIAVEIS:-}
     tmpfs: ["/tmp:uid=10001,gid=10001"]
     depends_on:
       redis: { condition: service_healthy }
+    networks: [interna]
+
+  # Coleta do DJEN + triagem + Leitor IA. Mesma imagem da API, outro comando.
+  worker:
+    <<: *endurecido
+    build: ./backend
+    command: ["python", "-m", "worker"]
+    environment:
+      <<: *chaves
+      MAQUINA_AMBIENTE: producao
+      MAQUINA_WORKER_DATABASE_URL: ${MAQUINA_WORKER_DATABASE_URL:?defina MAQUINA_WORKER_DATABASE_URL}
+      MAQUINA_DJEN_TRIBUNAIS: ${MAQUINA_DJEN_TRIBUNAIS:-}
+      MAQUINA_DJEN_TERMOS: ${MAQUINA_DJEN_TERMOS:-}
+      MAQUINA_DJEN_INTERVALO_S: ${MAQUINA_DJEN_INTERVALO_S:-}
+      MAQUINA_DJEN_DIAS_RETROATIVOS: ${MAQUINA_DJEN_DIAS_RETROATIVOS:-}
+      MAQUINA_CICLO_S: ${MAQUINA_CICLO_S:-}
+      MAQUINA_LEITOR_ATIVO: ${MAQUINA_LEITOR_ATIVO:-}
+      MAQUINA_LEITOR_MODELO: ${MAQUINA_LEITOR_MODELO:-}
+      MAQUINA_LEITOR_ESFORCO: ${MAQUINA_LEITOR_ESFORCO:-}
+      MAQUINA_LEITOR_ORCAMENTO_DIA_USD: ${MAQUINA_LEITOR_ORCAMENTO_DIA_USD:-}
+      MAQUINA_LEITOR_CONCORRENCIA: ${MAQUINA_LEITOR_CONCORRENCIA:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+    tmpfs: ["/tmp:uid=10001,gid=10001"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(0 if time.time() - os.path.getmtime('/tmp/maquina-worker-vivo') < 120 else 1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     networks: [interna]
 
   web:
