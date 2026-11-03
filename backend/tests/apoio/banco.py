@@ -139,14 +139,25 @@ class Cenario:
         nome: str = "Compradora Teste",
         tribunais: list[str] | None = None,
         limite_leads_mes: int | None = None,
+        limite_radar_dia: int | None = None,
         assentos: int = 10,
         config: dict[str, Any] | None = None,
         ativo: bool = True,
     ) -> uuid.UUID:
         linhas = self.sql(
-            """insert into app.tenants (nome, cnpj, tribunais_permitidos, limite_leads_mes, assentos, config, ativo)
-               values (%s, %s, %s, %s, %s, %s, %s) returning id""",
-            [nome, "12345678000190", tribunais, limite_leads_mes, assentos, json.dumps(config or {}), ativo],
+            """insert into app.tenants
+                 (nome, cnpj, tribunais_permitidos, limite_leads_mes, limite_radar_dia, assentos, config, ativo)
+               values (%s, %s, %s, %s, %s, %s, %s, %s) returning id""",
+            [
+                nome,
+                "12345678000190",
+                tribunais,
+                limite_leads_mes,
+                limite_radar_dia,
+                assentos,
+                json.dumps(config or {}),
+                ativo,
+            ],
         )
         return linhas[0][0]
 
@@ -188,12 +199,14 @@ class Cenario:
         status: str = "inscrito",
         ja_cedido: bool = False,
         superpreferencia: bool = False,
+        score: int | None = None,
+        definitivo: bool = True,
     ) -> uuid.UUID:
         return self.sql(
             """insert into core.requisicoes
                  (tribunal, numero_requisicao, processo_origem, credor_parte_id, ente_id, valor_face,
-                  data_base, status, ja_cedido, superpreferencia, natureza, ano_loa)
-               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'alimentar', 2027) returning id""",
+                  data_base, status, ja_cedido, superpreferencia, natureza, ano_loa, score_ativo, definitivo)
+               values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'alimentar', 2027, %s, %s) returning id""",
             [
                 tribunal,
                 f"REQ-{secrets.token_hex(6)}",
@@ -205,6 +218,8 @@ class Cenario:
                 status,
                 ja_cedido,
                 superpreferencia,
+                score,
+                definitivo,
             ],
         )[0][0]
 

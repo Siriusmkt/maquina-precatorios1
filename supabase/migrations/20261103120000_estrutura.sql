@@ -93,6 +93,11 @@ create table core.entes_devedores (
   regime_especial   boolean not null default false,
   prazo_medio_meses numeric(5,1) check (prazo_medio_meses >= 0),
   aportes           jsonb not null default '[]', -- [{ano, mes, valor}]
+  -- Acordo direto vigente (piso do preco): {desagio, prazo_meses, descricao, adesao_ate}
+  acordo            jsonb check (acordo is null or (
+                      jsonb_typeof(acordo -> 'desagio') = 'number'
+                      and (acordo ->> 'desagio')::numeric >= 0 and (acordo ->> 'desagio')::numeric < 1
+                      and jsonb_typeof(acordo -> 'prazo_meses') = 'number')),
   atualizado_em     timestamptz not null default now(),
   unique nulls not distinct (nome, esfera, uf)
 );

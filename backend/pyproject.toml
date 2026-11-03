@@ -50,6 +50,8 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "S311", "PLR0915", "ARG001"]
+# FastAPI injeta parametros por nome (path, corpo, dependencias): muitos argumentos e o padrao.
+"app/rotas/**" = ["PLR0917"]
 
 [tool.mypy]
 python_version = "3.13"

@@ -16,7 +16,7 @@ from app.config import Configuracoes
 from app.erros import registrar_tratadores
 from app.logs import configurar_logs
 from app.recursos import Recursos, nomes_cookie
-from app.rotas import basicas
+from app.rotas import basicas, espaco, publico
 from app.seguranca.cripto import CifraDeCampo
 from app.seguranca.http import ProtecaoCsrf, SegurancaHttp
 from app.seguranca.jwt import VerificadorJwt
@@ -84,6 +84,8 @@ def criar_app(
     registrar_tratadores(app)
     app.include_router(basicas.router)
     app.include_router(rotas_auth.router)
+    app.include_router(espaco.router)
+    app.include_router(publico.router)
 
     # Ordem: o ultimo adicionado e o mais externo.
     app.add_middleware(
