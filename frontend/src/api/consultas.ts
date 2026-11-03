@@ -8,9 +8,11 @@ import {
 } from "@tanstack/react-query";
 import { api } from "./cliente";
 import type {
+  Cadencia,
   Equipe,
   Estagio,
   FiltrosRadar,
+  IntegracaoWhatsApp,
   LeadDetalhe,
   LeadResumo,
   Painel,
@@ -18,7 +20,9 @@ import type {
   Perfil,
   Precificacao,
   Preferencias,
+  PassoCadencia,
   ResumoRadar,
+  Tarefa,
   VerificacaoPublica,
 } from "./tipos";
 
@@ -31,6 +35,9 @@ export const chaves = {
   lead: (t: string, id: string) => ["lead", t, id] as const,
   equipe: (t: string) => ["equipe", t] as const,
   preferencias: (t: string) => ["preferencias", t] as const,
+  whatsapp: (t: string) => ["whatsapp", t] as const,
+  cadencias: (t: string) => ["cadencias", t] as const,
+  tarefas: (t: string) => ["tarefas", t] as const,
 };
 
 function consulta(filtros: FiltrosRadar, cursor?: string): string {
@@ -208,6 +215,126 @@ export function useSalvarPreferencias(tenant: string) {
       api<Preferencias>(`/t/${tenant}/preferencias`, { metodo: "PATCH", corpo: valores }),
     onSuccess: (dados) => cliente.setQueryData(chaves.preferencias(tenant), dados),
   });
+}
+
+// ------------------------------------------------------------------ contato
+export function useAdicionarContato(tenant: string, lead: string) {
+  const invalidar = useInvalidar(tenant);
+  return useMutation({
+    mutationFn: (v: { tipo: "telefone" | "email" | "endereco"; valor: string }) =>
+      api<{ id: string }>(`/t/${tenant}/leads/${lead}/contatos`, { metodo: "POST", corpo: v }),
+    onSuccess: () => invalidar(chaves.lead(tenant, lead)),
+  });
+}
+
+export function useAutorizacoes(tenant: string, lead: string) {
+  const invalidar = useInvalidar(tenant);
+  return useMutation({
+    mutationFn: (v: { contato: string; whatsapp_autorizado?: boolean; nao_me_ligue?: boolean }) =>
+      api<void>(`/t/${tenant}/contatos/${v.contato}`, {
+        metodo: "PATCH",
+        corpo: { whatsapp_autorizado: v.whatsapp_autorizado, nao_me_ligue: v.nao_me_ligue },
+      }),
+    onSuccess: () => invalidar(chaves.lead(tenant, lead)),
+  });
+}
+
+export function usePedirWhatsApp(tenant: string, lead: string) {
+  const invalidar = useInvalidar(tenant);
+  return useMutation({
+    mutationFn: (v: { contato_id: string; texto?: string; modelo?: string }) =>
+      api<{ id: string; status: string }>(`/t/${tenant}/leads/${lead}/whatsapp`, { metodo: "POST", corpo: v }),
+    onSuccess: () => invalidar(chaves.lead(tenant, lead)),
+  });
+}
+
+export function useCadenciaDoLead(tenant: string, lead: string) {
+  const invalidar = useInvalidar(tenant);
+  const cliente = useQueryClient();
+  const depois = () => {
+    invalidar(chaves.lead(tenant, lead));
+    void cliente.invalidateQueries({ queryKey: chaves.cadencias(tenant) });
+  };
+  const iniciar = useMutation({
+    mutationFn: (cadencia_id: string) =>
+      api<void>(`/t/${tenant}/leads/${lead}/cadencia`, { metodo: "PUT", corpo: { cadencia_id } }),
+    onSuccess: depois,
+  });
+  const parar = useMutation({
+    mutationFn: () => api<void>(`/t/${tenant}/leads/${lead}/cadencia`, { metodo: "DELETE" }),
+    onSuccess: depois,
+  });
+  return { iniciar, parar };
+}
+
+export function useWhatsApp(tenant: string, ligado = true) {
+  return useQuery({
+    queryKey: chaves.whatsapp(tenant),
+    queryFn: () => api<IntegracaoWhatsApp>(`/t/${tenant}/integracoes/whatsapp`),
+    enabled: ligado,
+  });
+}
+
+export function useSalvarWhatsApp(tenant: string) {
+  const cliente = useQueryClient();
+  const depois = () => void cliente.invalidateQueries({ queryKey: chaves.whatsapp(tenant) });
+  const salvar = useMutation({
+    mutationFn: (v: Record<string, unknown>) =>
+      api<void>(`/t/${tenant}/integracoes/whatsapp`, { metodo: "PUT", corpo: v }),
+    onSuccess: depois,
+  });
+  const desligar = useMutation({
+    mutationFn: () => api<void>(`/t/${tenant}/integracoes/whatsapp`, { metodo: "DELETE" }),
+    onSuccess: depois,
+  });
+  return { salvar, desligar };
+}
+
+export function useCadencias(tenant: string) {
+  return useQuery({ queryKey: chaves.cadencias(tenant), queryFn: () => api<Cadencia[]>(`/t/${tenant}/cadencias`) });
+}
+
+export function useEditarCadencias(tenant: string) {
+  const cliente = useQueryClient();
+  const depois = () => void cliente.invalidateQueries({ queryKey: chaves.cadencias(tenant) });
+  const criar = useMutation({
+    mutationFn: (v: { nome: string; passos: PassoCadencia[]; ativa?: boolean }) =>
+      api<{ id: string }>(`/t/${tenant}/cadencias`, { metodo: "POST", corpo: v }),
+    onSuccess: depois,
+  });
+  const mudar = useMutation({
+    mutationFn: (v: { id: string; nome?: string; passos?: PassoCadencia[]; ativa?: boolean }) =>
+      api<void>(`/t/${tenant}/cadencias/${v.id}`, {
+        metodo: "PATCH",
+        corpo: { nome: v.nome, passos: v.passos, ativa: v.ativa },
+      }),
+    onSuccess: depois,
+  });
+  const remover = useMutation({
+    mutationFn: (id: string) => api<void>(`/t/${tenant}/cadencias/${id}`, { metodo: "DELETE" }),
+    onSuccess: depois,
+  });
+  return { criar, mudar, remover };
+}
+
+export function useTarefas(tenant: string) {
+  return useQuery({ queryKey: chaves.tarefas(tenant), queryFn: () => api<Tarefa[]>(`/t/${tenant}/tarefas`) });
+}
+
+export function useEditarTarefas(tenant: string) {
+  const cliente = useQueryClient();
+  const depois = () => void cliente.invalidateQueries({ queryKey: chaves.tarefas(tenant) });
+  const criar = useMutation({
+    mutationFn: (v: { titulo: string; lead_id?: string; vence_em?: string }) =>
+      api<{ id: string }>(`/t/${tenant}/tarefas`, { metodo: "POST", corpo: v }),
+    onSuccess: depois,
+  });
+  const concluir = useMutation({
+    mutationFn: (v: { id: string; concluida: boolean }) =>
+      api<void>(`/t/${tenant}/tarefas/${v.id}`, { metodo: "PATCH", corpo: { concluida: v.concluida } }),
+    onSuccess: depois,
+  });
+  return { criar, concluir };
 }
 
 // ------------------------------------------------------------------ senha (paginas publicas)

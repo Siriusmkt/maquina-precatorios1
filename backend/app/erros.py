@@ -60,6 +60,15 @@ MENSAGENS: dict[str, str] = {
     "convites_indisponiveis": "Convites desligados: falta configurar a chave de serviço do Supabase.",
     "link_invalido": "Este link expirou ou já foi usado. Peça um novo.",
     "senha_fraca": "Use uma senha com pelo menos 10 caracteres, misturando letras e números.",
+    # Contato
+    "whatsapp_desligado": "O WhatsApp oficial não está ligado. Configure na tela Contato.",
+    "sem_autorizacao_whatsapp": "O credor ainda não autorizou mensagens pelo WhatsApp. Registre a autorização antes.",
+    "fora_da_janela": "Passaram mais de 24 horas desde a última mensagem do credor: use um modelo aprovado.",
+    "modelo_nao_cadastrado": "Esse modelo não está cadastrado na integração do WhatsApp.",
+    "cadencia_pausada": "Essa cadência está pausada.",
+    "sem_endereco": "Cadastre o endereço do credor nos contatos para gerar a carta.",
+    "sem_contato_publico": "Defina o contato oficial em Equipe para gerar cartas: é por ele que o credor responde.",
+    "contato_ilegivel": "Não foi possível ler este contato. Cadastre de novo.",
 }
 
 _STATUS_NEGOCIO = {"MQ403": 403, "MQ404": 404, "MQ409": 409, "MQ422": 422, "MQ429": 429}

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from tests.apoio.banco import Cenario
 
-FUNCOES_DO_ANONIMO = {"consultar_verificacao"}
+FUNCOES_DO_ANONIMO = {"consultar_verificacao", "receber_whatsapp"}
 
 FUNCOES_DO_USUARIO = {
     "meus_tenants",
@@ -24,6 +24,9 @@ FUNCOES_DO_USUARIO = {
     "remover_membro",
     "atualizar_preferencias",
     "registrar_exportacao",
+    "salvar_integracao",
+    "desligar_integracao",
+    "atualizar_config_integracao",
 }
 
 

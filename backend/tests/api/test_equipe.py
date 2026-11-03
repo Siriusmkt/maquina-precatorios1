@@ -149,6 +149,13 @@ async def test_preferencias_padrao_salvar_e_voltar_ao_padrao(navegador: Navegado
     volta = (await navegador.http.patch(f"/api/t/{t}/preferencias", json={"taxa_alvo_aa": None})).json()
     assert volta["taxa_alvo_aa"] == "0.22"
 
+    assert padrao["contato_publico"] is None
+    contato = await navegador.http.patch(
+        f"/api/t/{t}/preferencias", json={"contato_publico": "  (11) 4000-0000 · contato@exemplo.com.br "}
+    )
+    assert contato.json()["contato_publico"] == "(11) 4000-0000 · contato@exemplo.com.br"
+    assert (await navegador.http.patch(f"/api/t/{t}/preferencias", json={"contato_publico": "x"})).status_code == 422
+
     for corpo, status in (({"taxa_alvo_aa": "0.95"}, 422), ({"alcada_gestor_desagio_min": 10}, 403), ({}, 422)):
         assert (await navegador.http.patch(f"/api/t/{t}/preferencias", json=corpo)).status_code == status
 

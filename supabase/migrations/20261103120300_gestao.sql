@@ -180,7 +180,7 @@ begin
   end if;
 
   for v_chave, v_valor in select e.key, e.value from jsonb_each(p_valores) e loop
-    if not (v_faixas ? v_chave or v_chave = 'nao_cobramos_texto') then
+    if not (v_faixas ? v_chave or v_chave in ('nao_cobramos_texto', 'contato_publico')) then
       raise exception using errcode = 'MQ422', message = 'preferencia_invalida', detail = v_chave;
     end if;
     if v_chave = 'alcada_gestor_desagio_min' and not app.tenho_papel(p_tenant, '{owner}') then
@@ -188,8 +188,9 @@ begin
     end if;
     if jsonb_typeof(v_valor) = 'null' then
       v_remover := v_remover || v_chave;
-    elsif v_chave = 'nao_cobramos_texto' then
-      if jsonb_typeof(v_valor) <> 'string' or char_length(v_valor #>> '{}') not between 10 and 300 then
+    elsif v_chave in ('nao_cobramos_texto', 'contato_publico') then
+      if jsonb_typeof(v_valor) <> 'string'
+         or char_length(v_valor #>> '{}') not between (case v_chave when 'contato_publico' then 5 else 10 end) and 300 then
         raise exception using errcode = 'MQ422', message = 'preferencia_invalida', detail = v_chave;
       end if;
     else

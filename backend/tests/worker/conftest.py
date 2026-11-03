@@ -21,7 +21,10 @@ from worker.pipeline import Pool
 
 TABELAS_DO_CORE = (
     "core.publicacoes, core.coletas, core.extracoes_ia, core.eventos, core.requisicoes, "
-    "core.processo_partes, core.partes, core.processos, core.advogados, core.entes_devedores"
+    "core.processo_partes, core.partes, core.processos, core.advogados, core.entes_devedores, "
+    # filas do mensageiro sao globais (todas as empresas): cada teste comeca com elas vazias
+    "app.whatsapp_recebidos, app.whatsapp_envios, app.integracoes, app.tarefas, app.interacoes, "
+    "app.leads, app.cadencias, app.contatos"
 )
 
 

@@ -9,6 +9,7 @@ from decimal import Decimal
 import pytest
 
 from app.dominio.cnj import formatar_cnj, normalizar_cnj
+from app.dominio.endereco import EnderecoInvalido, chave_do_endereco, normalizar_endereco
 from app.dominio.formato import reais
 from app.dominio.funil import TransicaoNegada, transicoes_permitidas, validar_transicao
 from app.dominio.preco import AcordoEstatal, Ativo, Parametros, PremissaInvalida, precificar
@@ -237,3 +238,25 @@ class TestFunil:
 
     def test_cedido_e_terminal(self) -> None:
         assert transicoes_permitidas("cedido", "owner") == []
+
+
+# --------------------------------------------------------------------- endereco da carta
+def test_endereco_limpo_e_comparavel() -> None:
+    bruto = "  Rua das  Flores, 100\r\n\r\n Jardim\tExemplo \nSão Paulo - SP\n01234567\x00"
+    limpo = normalizar_endereco(bruto)
+    assert limpo == "Rua das Flores, 100\nJardim Exemplo\nSão Paulo - SP\n01234567"
+    assert chave_do_endereco(limpo) == chave_do_endereco("RUA DAS FLORES 100\njardim exemplo\nsao paulo sp\n01234567")
+
+
+@pytest.mark.parametrize(
+    "valor",
+    [
+        "Rua das Flores, 100, 01234-567",  # uma linha so
+        "Rua das Flores, 100\nSão Paulo - SP",  # sem CEP
+        "\n".join(["linha 01234-567"] * 7),  # linhas demais
+        "Rua " + "x" * 90 + "\n01234-567",  # linha longa demais
+    ],
+)
+def test_endereco_invalido(valor: str) -> None:
+    with pytest.raises(EnderecoInvalido):
+        normalizar_endereco(valor)

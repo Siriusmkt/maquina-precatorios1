@@ -202,6 +202,75 @@ async def contatos(conn: Conexao, tenant_id: uuid.UUID, parte_id: uuid.UUID | No
     return [ContatoLead.model_validate(linha) for linha in await cursor.fetchall()]
 
 
+class CadenciaDoLead(BaseModel):
+    id: uuid.UUID
+    nome: str
+    ativa: bool
+    passo: int
+    total_passos: int
+    inicio_em: datetime | None
+    proxima_acao_em: datetime | None
+
+
+class EnvioWhatsApp(BaseModel):
+    id: uuid.UUID
+    tipo: str
+    resumo: str
+    status: str
+    erro: str | None
+    tentativas: int
+    automatico: bool
+    criado_em: datetime
+    enviado_em: datetime | None
+
+
+class Conversa(BaseModel):
+    """O que a tela do lead precisa para conversar: WhatsApp, janela de 24 h, cadencia e fila de envios."""
+
+    whatsapp_ligado: bool
+    modelos: list[str]
+    ultima_do_credor: datetime | None
+    cadencia: CadenciaDoLead | None
+    envios: list[EnvioWhatsApp]
+
+
+async def conversa(conn: Conexao, tenant_id: uuid.UUID, lead_id: uuid.UUID) -> Conversa:
+    cursor = await conn.execute(
+        """select coalesce(i.ativa, false) as whatsapp_ligado,
+                  coalesce((select array_agg(m->>'nome' order by m->>'nome')
+                              from jsonb_array_elements(coalesce(i.config->'modelos', '[]'::jsonb)) m), '{}')
+                    as modelos,
+                  (select max(x.criado_em) from app.interacoes x
+                    where x.lead_id = l.id and x.canal = 'whatsapp' and x.direcao = 'entrada') as ultima_do_credor,
+                  case when c.id is null then null else jsonb_build_object(
+                    'id', c.id, 'nome', c.nome, 'ativa', c.ativa, 'passo', l.cadencia_passo,
+                    'total_passos', jsonb_array_length(c.passos), 'inicio_em', l.cadencia_inicio_em,
+                    'proxima_acao_em', l.proxima_acao_em) end as cadencia
+             from app.leads l
+             left join app.cadencias c on c.tenant_id = l.tenant_id and c.id = l.cadencia_id
+             left join app.integracoes i on i.tenant_id = l.tenant_id and i.tipo = 'whatsapp'
+            where l.tenant_id = %s and l.id = %s""",
+        [tenant_id, lead_id],
+    )
+    base = await cursor.fetchone() or {}
+    cursor = await conn.execute(
+        """select id, tipo, coalesce(conteudo->>'modelo', left(conteudo->>'texto', 140), '') as resumo, status, erro,
+                  tentativas, pedido_por is null as automatico, criado_em, enviado_em
+             from app.whatsapp_envios
+            where tenant_id = %s and lead_id = %s
+            order by criado_em desc
+            limit 20""",
+        [tenant_id, lead_id],
+    )
+    return Conversa(
+        whatsapp_ligado=bool(base.get("whatsapp_ligado")),
+        modelos=list(base.get("modelos") or []),
+        ultima_do_credor=base.get("ultima_do_credor"),
+        cadencia=CadenciaDoLead.model_validate(base["cadencia"]) if base.get("cadencia") else None,
+        envios=[EnvioWhatsApp.model_validate(linha) for linha in await cursor.fetchall()],
+    )
+
+
 class Painel(BaseModel):
     funil: list[dict[str, Any]]
     leads_7_dias: int

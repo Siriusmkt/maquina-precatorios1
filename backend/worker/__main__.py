@@ -5,6 +5,8 @@ python -m worker coletar TJSP 2026-11-02 [--termo requisitório]
 python -m worker triar
 python -m worker extrair [--limite 50]
 python -m worker sonda [TJSP]         testa o acesso ao DJEN e mostra o formato (sem dados pessoais)
+python -m worker sonda-whatsapp <id-do-cliente>
+                                      confere o token e o numero do WhatsApp na Meta (nao envia nada)
 """
 
 from __future__ import annotations
@@ -16,6 +18,8 @@ import json
 import logging
 import signal
 import sys
+import uuid
+from collections.abc import Awaitable, Callable
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -41,6 +45,16 @@ async def bater(parar: asyncio.Event, arquivo: Path = BATIMENTO, intervalo_s: fl
             await asyncio.wait_for(parar.wait(), timeout=intervalo_s)
 
 
+async def repetir(tarefa: Callable[[], Awaitable[object]], parar: asyncio.Event, intervalo_s: float, nome: str) -> None:
+    while not parar.is_set():
+        try:
+            await tarefa()
+        except Exception:
+            log.exception("%s falhou; nova tentativa na proxima rodada", nome)
+        with contextlib.suppress(TimeoutError):
+            await asyncio.wait_for(parar.wait(), timeout=intervalo_s)
+
+
 async def rodar(config: ConfiguracoesWorker) -> None:
     parar = asyncio.Event()
     laco = asyncio.get_running_loop()
@@ -49,14 +63,12 @@ async def rodar(config: ConfiguracoesWorker) -> None:
             laco.add_signal_handler(sinal, parar.set)
     batimento = asyncio.create_task(bater(parar))
     try:
-        async with montar(config) as pipeline:
-            while not parar.is_set():
-                try:
-                    await pipeline.ciclo()
-                except Exception:
-                    log.exception("ciclo falhou; nova tentativa no proximo")
-                with contextlib.suppress(TimeoutError):
-                    await asyncio.wait_for(parar.wait(), timeout=config.ciclo_s)
+        async with montar(config) as servicos:
+            # Mensagens e cadencias andam a cada poucos segundos; a coleta, a cada ciclo.
+            await asyncio.gather(
+                repetir(servicos.pipeline.ciclo, parar, config.ciclo_s, "ciclo"),
+                repetir(servicos.mensageiro.ciclo, parar, config.mensageiro_s, "mensageiro"),
+            )
     finally:
         parar.set()
         await batimento
@@ -106,6 +118,8 @@ def principal(argv: list[str] | None = None) -> int:
     p_extrair.add_argument("--limite", type=int, default=50)
     p_sonda = sub.add_parser("sonda")
     p_sonda.add_argument("tribunal", nargs="?", default="TJSP")
+    p_sonda_wa = sub.add_parser("sonda-whatsapp")
+    p_sonda_wa.add_argument("tenant", type=uuid.UUID)
     args = parser.parse_args(argv)
 
     configurar_logs()
@@ -117,7 +131,12 @@ def principal(argv: list[str] | None = None) -> int:
             return 0
         if args.comando == "sonda":
             return await sonda(config, args.tribunal)
-        async with montar(config) as pipeline:
+        async with montar(config) as servicos:
+            pipeline = servicos.pipeline
+            if args.comando == "sonda-whatsapp":
+                relatorio = await servicos.mensageiro.conferir_integracao(args.tenant)
+                print(json.dumps(relatorio, ensure_ascii=False, indent=2))
+                return 0 if relatorio.get("acesso") == "ok" else 1
             if args.comando == "coletar":
                 print(await pipeline.coletar(args.tribunal.upper(), args.dia, args.termo), "publicacoes novas")
             elif args.comando == "triar":

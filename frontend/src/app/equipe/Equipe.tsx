@@ -301,6 +301,7 @@ interface Rascunho {
   prazo: string;
   alcada: string;
   aviso: string;
+  contato: string;
 }
 
 function rascunhoDe(p: Preferencias): Rascunho {
@@ -309,6 +310,7 @@ function rascunhoDe(p: Preferencias): Rascunho {
     prazo: String(p.prazo_padrao_meses),
     alcada: p.alcada_gestor_desagio_min === null ? "" : String(Number(p.alcada_gestor_desagio_min)).replace(".", ","),
     aviso: p.nao_cobramos_texto,
+    contato: p.contato_publico ?? "",
   };
 }
 
@@ -375,6 +377,7 @@ function BlocoPreferencias({ tenant }: { tenant: string }) {
     if (r.prazo !== original.prazo) saida.prazo_padrao_meses = r.prazo;
     if (r.alcada !== original.alcada) saida.alcada_gestor_desagio_min = r.alcada;
     if (r.aviso.trim() !== original.aviso.trim()) saida.nao_cobramos_texto = r.aviso.trim();
+    if (r.contato.trim() !== original.contato.trim()) saida.contato_publico = r.contato.trim() || null;
     return saida;
   }, [p, r]);
 
@@ -405,8 +408,8 @@ function BlocoPreferencias({ tenant }: { tenant: string }) {
         if (texto === "") valores[chave] = null;
         else if (/^\d{1,2}(\.\d{1,2})?$/.test(texto)) valores[chave] = Number(texto);
         else invalidos.add(chave);
-      } else if (chave === "nao_cobramos_texto") {
-        valores[chave] = String(bruto);
+      } else if (chave === "nao_cobramos_texto" || chave === "contato_publico") {
+        valores[chave] = bruto === null ? null : String(bruto);
       } else {
         const fracao = percentualParaFracao(String(bruto));
         if (fracao === null) invalidos.add(chave);
@@ -491,6 +494,23 @@ function BlocoPreferencias({ tenant }: { tenant: string }) {
             className="mt-2 w-full resize-none rounded-2xl border border-white/8 bg-noite-900/70 p-3.5 text-[13.5px] leading-relaxed text-tinta-100 outline-none focus:border-menta-400/60 disabled:text-tinta-400"
           />
           <p className="mt-1 text-right text-[11.5px] text-tinta-600">{r.aviso.trim().length}/300</p>
+        </div>
+
+        <div className="mt-3">
+          <p className="flex items-center gap-2 text-[13.5px] text-tinta-100">
+            <Mail className="size-4 text-menta-400" /> Contato oficial na carta
+            {!p.personalizadas.includes("contato_publico") && <Selo>não definido</Selo>}
+          </p>
+          <p className="mt-0.5 text-[12px] text-tinta-500">Telefone, e-mail ou site que o credor usa para confirmar que é você.</p>
+          <input
+            aria-label="Contato oficial na carta"
+            disabled={desligada}
+            value={r.contato}
+            maxLength={300}
+            placeholder="(11) 4000-0000 · contato@suaempresa.com.br"
+            onChange={(e) => setR({ ...r, contato: e.target.value })}
+            className="mt-2 h-11 w-full rounded-2xl border border-white/8 bg-noite-900/70 px-3.5 text-[13.5px] text-tinta-100 outline-none placeholder:text-tinta-600 focus:border-menta-400/60 disabled:text-tinta-400"
+          />
         </div>
 
         {!desligada && (

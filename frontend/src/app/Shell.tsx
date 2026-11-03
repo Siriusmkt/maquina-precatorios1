@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageCircle,
   Radar as IconeRadar,
   Search,
   Users,
@@ -28,6 +29,7 @@ const NAVEGACAO = [
   { para: "/app", rotulo: "Painel", icone: LayoutDashboard, fim: true },
   { para: "/app/radar", rotulo: "Radar", icone: IconeRadar, fim: false },
   { para: "/app/leads", rotulo: "Funil", icone: KanbanSquare, fim: false },
+  { para: "/app/contato", rotulo: "Contato", icone: MessageCircle, fim: false },
   { para: "/app/equipe", rotulo: "Equipe", icone: Users, fim: false },
 ];
 

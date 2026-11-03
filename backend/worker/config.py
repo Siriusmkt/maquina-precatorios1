@@ -65,6 +65,10 @@ class ConfiguracoesWorker(BaseSettings):
 
     # Ciclo
     ciclo_s: float = Field(default=300.0, ge=5)
+    # Mensageiro (WhatsApp e cadencias): bem mais frequente que a coleta.
+    mensageiro_s: float = Field(default=15.0, ge=2)
+    # Endereco publico do app (link de verificacao nas mensagens).
+    url_publica: str | None = None
 
     # Cifra do documento (CPF/CNPJ) das partes: as mesmas chaves da API.
     chaves_cifra: dict[int, SecretStr]
@@ -86,6 +90,10 @@ class ConfiguracoesWorker(BaseSettings):
         url = urlparse(self.djen_url)
         if self.ambiente != "teste" and (url.scheme != "https" or url.hostname not in HOSTS_PERMITIDOS):
             raise ValueError("djen_url precisa ser https em um host permitido")
+        if self.url_publica:
+            object.__setattr__(self, "url_publica", self.url_publica.rstrip("/"))
+            if self.ambiente == "producao" and not self.url_publica.startswith("https://"):
+                raise ValueError("url_publica deve usar https")
         for versao, chave in self.chaves_cifra.items():
             _decodificar_chave(chave.get_secret_value(), f"chaves_cifra[{versao}]")
         if self.chave_cifra_ativa not in self.chaves_cifra:

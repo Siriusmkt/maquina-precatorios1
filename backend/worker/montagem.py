@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import logging
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any
 
 import anthropic
@@ -16,7 +17,9 @@ from psycopg_pool import AsyncConnectionPool
 from worker.config import ConfiguracoesWorker
 from worker.djen import ClienteDjen
 from worker.leitor import Extrator, ExtratorClaude
-from worker.pipeline import Pipeline, Pool
+from worker.mensageiro import Mensageiro
+from worker.pipeline import Pipeline, Pool, agora_sp
+from worker.whatsapp import ClienteWhatsApp
 
 log = logging.getLogger("maquina.worker")
 AGENTE = "maquina-precatorios-coletor/0.1"
@@ -62,14 +65,21 @@ async def cliente_djen(
         await http.aclose()
 
 
+@dataclass(frozen=True)
+class Servicos:
+    pipeline: Pipeline
+    mensageiro: Mensageiro
+
+
 @contextlib.asynccontextmanager
 async def montar(
     config: ConfiguracoesWorker,
     *,
     transporte_djen: httpx.AsyncBaseTransport | None = None,
+    transporte_whatsapp: httpx.AsyncBaseTransport | None = None,
     extrator: Extrator | None = None,
-) -> AsyncIterator[Pipeline]:
-    """Abre e fecha tudo. `transporte_djen` e `extrator` existem para os testes."""
+) -> AsyncIterator[Servicos]:
+    """Abre e fecha tudo. Os transportes e o extrator opcionais existem para os testes."""
     async with contextlib.AsyncExitStack() as pilha:
         pool = criar_pool(config.worker_database_url.get_secret_value(), max_size=config.leitor_concorrencia + 4)
         await pool.open()
@@ -89,4 +99,12 @@ async def montar(
             )
         elif extrator is None:
             log.warning("Leitor IA desligado (MAQUINA_LEITOR_ATIVO=false): publicacoes relevantes aguardam na fila")
-        yield Pipeline(pool, config, djen, extrator)
+        http_meta = httpx.AsyncClient(
+            timeout=httpx.Timeout(20.0, connect=10.0),
+            headers={"user-agent": AGENTE},
+            follow_redirects=False,
+            transport=transporte_whatsapp,
+        )
+        pilha.push_async_callback(http_meta.aclose)
+        mensageiro = Mensageiro(pool, config, ClienteWhatsApp(http_meta), relogio=agora_sp)
+        yield Servicos(pipeline=Pipeline(pool, config, djen, extrator), mensageiro=mensageiro)

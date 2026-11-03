@@ -42,7 +42,7 @@ services:
       redis: { condition: service_healthy }
     networks: [interna]
 
-  # Coleta do DJEN + triagem + Leitor IA. Mesma imagem da API, outro comando.
+  # Coleta do DJEN + triagem + Leitor IA + mensageiro do WhatsApp e cadencias. Mesma imagem da API.
   worker:
     <<: *endurecido
     build: ./backend
@@ -62,6 +62,9 @@ services:
       MAQUINA_LEITOR_ORCAMENTO_DIA_USD: ${MAQUINA_LEITOR_ORCAMENTO_DIA_USD:-}
       MAQUINA_LEITOR_CONCORRENCIA: ${MAQUINA_LEITOR_CONCORRENCIA:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # WhatsApp: os tokens da Meta ficam cifrados no banco (cadastrados pela tela Contato), nao aqui.
+      MAQUINA_MENSAGEIRO_S: ${MAQUINA_MENSAGEIRO_S:-}
+      MAQUINA_URL_PUBLICA: ${MAQUINA_URL_PUBLICA:-}
     tmpfs: ["/tmp:uid=10001,gid=10001"]
     healthcheck:
       test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(0 if time.time() - os.path.getmtime('/tmp/maquina-worker-vivo') < 120 else 1)"]

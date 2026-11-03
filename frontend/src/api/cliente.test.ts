@@ -98,4 +98,29 @@ describe("cliente da API", () => {
     await expect(api("/auth/entrar", { metodo: "POST", corpo: {} })).rejects.toMatchObject({ codigo: "credenciais_invalidas" });
     expect(chamadas.some((c) => c.url === "/api/auth/renovar")).toBe(false);
   });
+
+  it("baixar por POST leva o CSRF e entrega o arquivo com o nome que a API mandou", async () => {
+    const chamadas: { url: string; metodo: string; csrf: string | null }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit = {}) => {
+        chamadas.push({ url, metodo: init.method ?? "GET", csrf: new Headers(init.headers).get("x-csrf-token") });
+        if (url === "/api/auth/csrf") return new Response(JSON.stringify({ csrf: "token-csrf" }), { status: 200 });
+        return new Response("%PDF-1.4", {
+          status: 200,
+          headers: { "content-type": "application/pdf", "content-disposition": 'attachment; filename="carta-1234.pdf"' },
+        });
+      }),
+    );
+    const criar = vi.fn(() => "blob:x");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: criar, revokeObjectURL: vi.fn() }));
+    const clique = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+      expect(this.download).toBe("carta-1234.pdf");
+    });
+    const { baixar } = await cliente();
+    await baixar("/t/1/leads/2/carta", "POST");
+    expect(chamadas.at(-1)).toEqual({ url: "/api/t/1/leads/2/carta", metodo: "POST", csrf: "token-csrf" });
+    expect(clique).toHaveBeenCalledOnce();
+    expect(criar).toHaveBeenCalledOnce();
+  });
 });

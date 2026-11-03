@@ -163,6 +163,7 @@ class Preferencias(BaseModel):
     prazo_padrao_meses: int
     alcada_gestor_desagio_min: Decimal | None
     nao_cobramos_texto: str
+    contato_publico: str | None
     personalizadas: list[str]
     pode_editar: bool
     pode_editar_alcada: bool
@@ -182,6 +183,10 @@ class MudarPreferencias(BaseModel):
     nao_cobramos_texto: (
         Annotated[str, StringConstraints(strip_whitespace=True, min_length=10, max_length=300)] | None
     ) = None
+    # Telefone, e-mail ou site oficial que o credor ve na carta.
+    contato_publico: Annotated[str, StringConstraints(strip_whitespace=True, min_length=5, max_length=300)] | None = (
+        None
+    )
 
 
 def _preferencias(config: dict[str, Any], papel: str) -> Preferencias:
@@ -195,6 +200,7 @@ def _preferencias(config: dict[str, Any], papel: str) -> Preferencias:
         prazo_padrao_meses=int(numero("prazo_padrao_meses", PRAZO_PADRAO_MESES)),
         alcada_gestor_desagio_min=Decimal(str(alcada)) if alcada is not None else None,
         nao_cobramos_texto=str(config.get("nao_cobramos_texto") or AVISO_PADRAO),
+        contato_publico=str(config["contato_publico"]) if config.get("contato_publico") else None,
         personalizadas=sorted(k for k in config if k in MudarPreferencias.model_fields),
         pode_editar=papel in ("owner", "gestor"),
         pode_editar_alcada=papel == "owner",

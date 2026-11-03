@@ -13,6 +13,7 @@ import { NOMES_ESTAGIO, paraNumero, percentual, reais } from "@/lib/formato";
 import { CINEMA, subir } from "@/lib/movimento";
 import { useApp } from "../contexto";
 import { BlocoContatos, BlocoPessoas, BlocoPropostas, BlocoScore, BlocoVerificacao, LinhaDoTempo } from "./Blocos";
+import { BlocoConversa } from "./Conversa";
 import { PrecoJusto } from "./PrecoJusto";
 
 function Trilha({ atual, transicoes, aoMover, movendo }: { atual: Estagio; transicoes: Estagio[]; aoMover: (e: Estagio) => void; movendo: boolean }) {
@@ -160,6 +161,7 @@ export default function LeadDetalhe() {
       >
         <motion.div variants={subir} className="space-y-6">
           <PrecoJusto tenant={tenant.id} detalhe={d} />
+          <BlocoConversa tenant={tenant.id} d={d} />
           <LinhaDoTempo tenant={tenant.id} d={d} />
         </motion.div>
         <motion.div variants={subir} className="space-y-6">

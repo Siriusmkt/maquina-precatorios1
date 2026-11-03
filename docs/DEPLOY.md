@@ -95,7 +95,41 @@ O serviço `worker` usa a mesma imagem da API e conecta como `maquina_worker` (a
 
    O healthcheck do `worker` confere um arquivo que o processo toca a cada 30 s; se o processo travar, o container fica `unhealthy` e o Easypanel (Swarm) o substitui.
 
-## 5. Checklist depois do deploy
+## 5. WhatsApp oficial (Meta), cadências e cartas
+
+A API nunca fala com a Meta: ela guarda os pedidos de envio e o que a Meta manda no webhook; o `worker` confere a assinatura, envia e anda as cadências (a cada `MAQUINA_MENSAGEIRO_S` segundos).
+
+1. **Rede.** O `worker` precisa de saída HTTPS para `graph.facebook.com`. A Meta precisa alcançar `https://app.seu-dominio.com.br/api/webhooks/whatsapp/<id-do-cliente>` (sem login; cada notificação é conferida pela assinatura `X-Hub-Signature-256` antes de virar dado).
+2. **Na Meta** (developers.facebook.com, conta Business verificada):
+   - crie um app do tipo *Business* com o produto **WhatsApp** e registre o número da empresa;
+   - gere um **token permanente** de *usuário do sistema* (Business Settings → Usuários do sistema) com `whatsapp_business_messaging` e `whatsapp_business_management`;
+   - copie o **App Secret** (Configurações do app → Básico) e o **Phone number ID** (WhatsApp → Configuração da API);
+   - crie e aprove os **modelos**. A primeira mensagem a um credor só pode ser modelo aprovado. Exemplo (variáveis na ordem que a tela Contato mostra):
+     > Olá, {{1}}. Aqui é a {{2}}. Vimos nas publicações oficiais que você tem um precatório a receber e temos uma proposta. Antes de conversar, confira que somos nós: código {{3}} em {{4}}. Nunca cobramos nada. Se não quiser receber mensagens, responda PARAR.
+3. **No sistema**, tela **Contato** (dono ou gestor): cole o Phone number ID, o token e o App Secret, cadastre os modelos com as variáveis na mesma ordem do modelo aprovado e salve. O token e o segredo são cifrados (AES-256-GCM, amarrados ao cliente) e nunca mais aparecem na tela.
+4. **Webhook na Meta**: cole a *URL de retorno* e o *token de verificação* que a tela Contato mostra, clique em verificar e assine o campo `messages`.
+5. **Confira do servidor** (lê o token cifrado do banco, consulta o número na Meta, não envia nada):
+
+   ```bash
+   docker compose run --rm worker python -m worker sonda-whatsapp <id-do-cliente>
+   ```
+
+   `"acesso": "ok"` traz o nome verificado e a qualidade do número. `token_invalido`: gere outro token e salve de novo na tela.
+6. **Teste ponta a ponta** com um número seu: cadastre o telefone num lead de teste, marque "o credor autorizou", envie o modelo, responda pelo celular (a janela de 24 h abre e a resposta entra na linha do tempo) e depois responda **PARAR**: a oposição é registrada, a cadência para e a confirmação sai uma única vez.
+7. **Cartas**: defina o *Contato oficial na carta* em **Equipe** (é por ele que o credor responde ou pede para sair). A carta usa o endereço informado pelo credor; cada geração revela o endereço com registro na auditoria e reaproveita o código anti-golpe ativo.
+
+Acompanhamento:
+
+```sql
+-- fila de envios e motivos de falha
+select status, erro, count(*) from app.whatsapp_envios group by 1, 2 order by 3 desc;
+-- notificações da Meta recusadas (assinatura errada ou corpo inválido)
+select status, count(*), max(recebido_em) from app.whatsapp_recebidos group by 1;
+-- integrações com problema (ex.: token recusado)
+select tenant_id, erro, atualizado_em from app.integracoes where erro is not null;
+```
+
+## 6. Checklist depois do deploy
 
 ```bash
 # cabeçalhos de segurança e CSP

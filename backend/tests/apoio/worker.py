@@ -7,6 +7,9 @@ repositorio e publico e nenhum dado real de processo entra nos testes.
 from __future__ import annotations
 
 import base64
+import hashlib
+import hmac
+import json
 import random
 import secrets
 from dataclasses import dataclass, field
@@ -190,3 +193,66 @@ class ExtratorFalso:
                     raise resposta
                 return ResultadoExtracao(extracao=resposta, cobranca=self.cobranca())
         raise AssertionError(f"publicacao sem resposta preparada: {pub.texto[:60]!r}")
+
+
+# --------------------------------------------------------------------- WhatsApp
+SEGREDO_DO_APP = "segredo-do-app-meta-de-teste"
+PHONE_NUMBER_ID = "123456789012345"
+URL_TESTE = "https://app.teste.local"
+MODELO_PADRAO = {
+    "nome": "apresentacao_precatorio",
+    "idioma": "pt_BR",
+    "variaveis": ["primeiro_nome", "empresa", "codigo", "link_verificacao"],
+}
+
+
+def assinar(corpo: str) -> str:
+
+    return "sha256=" + hmac.new(SEGREDO_DO_APP.encode(), corpo.encode(), hashlib.sha256).hexdigest()
+
+
+def payload_mensagem(de: str, texto: str, wamid: str, phone_number_id: str = PHONE_NUMBER_ID) -> str:
+    return json.dumps({
+        "object": "whatsapp_business_account",
+        "entry": [{"id": "WABA", "changes": [{"field": "messages", "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {"display_phone_number": "551140000000", "phone_number_id": phone_number_id},
+            "contacts": [{"profile": {"name": "Credora"}, "wa_id": de}],
+            "messages": [{"from": de, "id": wamid, "timestamp": "1700000000", "type": "text", "text": {"body": texto}}],
+        }}]}],
+    })  # fmt: skip
+
+
+def payload_status(wamid: str, status: str, codigo_erro: int | None = None) -> str:
+
+    item: dict[str, Any] = {"id": wamid, "status": status, "timestamp": "1700000001", "recipient_id": "5511"}
+    if codigo_erro:
+        item["errors"] = [{"code": codigo_erro, "title": "erro"}]
+    return json.dumps({
+        "object": "whatsapp_business_account",
+        "entry": [{"id": "WABA", "changes": [{"field": "messages", "value": {
+            "messaging_product": "whatsapp",
+            "metadata": {"display_phone_number": "551140000000", "phone_number_id": PHONE_NUMBER_ID},
+            "statuses": [item],
+        }}]}],
+    })  # fmt: skip
+
+
+@dataclass
+class MetaFalsa:
+    """Graph API falsa: guarda os pedidos e responde o que o teste mandar."""
+
+    respostas: list[httpx.Response] = field(default_factory=list)
+    pedidos: list[httpx.Request] = field(default_factory=list)
+
+    def __call__(self, pedido: httpx.Request) -> httpx.Response:
+        self.pedidos.append(pedido)
+        if self.respostas:
+            return self.respostas.pop(0)
+        return httpx.Response(
+            200, json={"messaging_product": "whatsapp", "messages": [{"id": f"wamid.SAIDA{len(self.pedidos)}"}]}
+        )
+
+    def corpos(self) -> list[dict[str, Any]]:
+
+        return [json.loads(p.content) for p in self.pedidos]

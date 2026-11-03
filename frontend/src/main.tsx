@@ -19,6 +19,7 @@ const Radar = lazyProtegido(() => import("@/app/radar/Radar"));
 const Funil = lazyProtegido(() => import("@/app/leads/Funil"));
 const LeadDetalhe = lazyProtegido(() => import("@/app/lead/LeadDetalhe"));
 const Equipe = lazyProtegido(() => import("@/app/equipe/Equipe"));
+const Contato = lazyProtegido(() => import("@/app/contato/Contato"));
 
 const clienteDeConsultas = new QueryClient({
   defaultOptions: {
@@ -83,6 +84,7 @@ const rotas = createBrowserRouter([
       { path: "radar", element: <Radar /> },
       { path: "leads", element: <Funil /> },
       { path: "leads/:leadId", element: <LeadDetalhe /> },
+      { path: "contato", element: <Contato /> },
       { path: "equipe", element: <Equipe /> },
     ],
   },

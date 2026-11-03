@@ -229,17 +229,103 @@ export interface LeadDetalhe {
     acessos: number;
     ultimo_acesso_em: string | null;
   }[];
-  contatos: {
-    id: string;
-    tipo: string;
-    origem: string;
-    validado: boolean;
-    opt_out_em: string | null;
-    nao_me_ligue: boolean;
-    coletado_em: string;
-  }[];
+  contatos: ContatoDoLead[];
+  conversa: Conversa;
   transicoes: Estagio[];
   papel: Papel;
+}
+
+export interface ContatoDoLead {
+  id: string;
+  tipo: "telefone" | "email" | "endereco";
+  origem: string;
+  validado: boolean;
+  opt_in_whatsapp_em: string | null;
+  opt_out_em: string | null;
+  nao_me_ligue: boolean;
+  coletado_em: string;
+}
+
+export type StatusEnvio = "pendente" | "enviado" | "falhou" | "cancelado";
+
+export interface EnvioWhatsApp {
+  id: string;
+  tipo: "texto" | "modelo";
+  resumo: string;
+  status: StatusEnvio;
+  erro: string | null;
+  tentativas: number;
+  automatico: boolean;
+  criado_em: string;
+  enviado_em: string | null;
+}
+
+export interface Conversa {
+  whatsapp_ligado: boolean;
+  modelos: string[];
+  ultima_do_credor: string | null;
+  cadencia: {
+    id: string;
+    nome: string;
+    ativa: boolean;
+    passo: number;
+    total_passos: number;
+    inicio_em: string | null;
+    proxima_acao_em: string | null;
+  } | null;
+  envios: EnvioWhatsApp[];
+}
+
+export type CanalCadencia = "whatsapp" | "carta" | "ligacao" | "email" | "advogado";
+
+export interface PassoCadencia {
+  dia: number;
+  canal: CanalCadencia;
+  modelo?: string | null;
+  instrucao?: string | null;
+}
+
+export interface Cadencia {
+  id: string;
+  nome: string;
+  passos: PassoCadencia[];
+  ativa: boolean;
+  leads_ativos: number;
+}
+
+export type VariavelModelo = "primeiro_nome" | "empresa" | "codigo" | "link_verificacao" | "tribunal";
+
+export interface ModeloWhatsApp {
+  nome: string;
+  idioma: string;
+  variaveis: VariavelModelo[];
+}
+
+export interface IntegracaoWhatsApp {
+  configurada: boolean;
+  ativa: boolean;
+  phone_number_id: string | null;
+  numero_exibicao: string | null;
+  versao: string | null;
+  modelos: ModeloWhatsApp[];
+  erro: string | null;
+  atualizado_em: string | null;
+  webhook_url: string | null;
+  token_verificacao: string;
+  variaveis: Record<VariavelModelo, string>;
+}
+
+export interface Tarefa {
+  id: string;
+  titulo: string;
+  lead_id: string | null;
+  credor: string | null;
+  responsavel_id: string | null;
+  responsavel: string | null;
+  vence_em: string | null;
+  concluida_em: string | null;
+  criado_em: string;
+  minha: boolean;
 }
 
 export interface VerificacaoPublica {
@@ -281,6 +367,7 @@ export interface Preferencias {
   prazo_padrao_meses: number;
   alcada_gestor_desagio_min: string | null;
   nao_cobramos_texto: string;
+  contato_publico: string | null;
   personalizadas: string[];
   pode_editar: boolean;
   pode_editar_alcada: boolean;

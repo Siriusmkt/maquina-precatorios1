@@ -1,4 +1,4 @@
-"""PDF da proposta: conteudo, marca d'agua por status, codigo anti-golpe e texto externo escapado."""
+"""PDFs da proposta e da carta: conteudo, marca d'agua, codigo anti-golpe e texto externo escapado."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from decimal import Decimal
 
 from pypdf import PdfReader
 
+from app.documentos.carta import DadosCarta, processo_mascarado
+from app.documentos.carta import gerar_pdf as gerar_carta
 from app.documentos.proposta import DadosProposta, gerar_pdf
 
 BASE = DadosProposta(
@@ -94,3 +96,62 @@ def test_proposta_antiga_sem_visao_do_credor_estima_o_liquido() -> None:
     t = _texto(gerar_pdf(replace(BASE, premissas=antigas)))
     assert "R$ 1.358.000,00" in t  # 1.400.000 x (1 - 3%)
     assert "em cerca de 16 meses" in t
+
+
+# --------------------------------------------------------------------- carta
+CARTA = DadosCarta(
+    empresa="Compradora Exemplo",
+    contato_publico="(11) 4000-0000 · contato@exemplo.com.br",
+    aviso="Nunca cobramos nenhum valor do credor.",
+    credor="Maria Exemplo da Silva",
+    endereco="Rua das Flores, 100\nJardim Exemplo\nSão Paulo - SP\n01234-567",
+    ente="Fazenda Pública do Estado de São Paulo",
+    tribunal="TJSP",
+    processo="74251505520214038271",
+    codigo="3REX-48MB-YK9D",
+    url_verificacao="https://app.exemplo.com.br/verificar/3REX-48MB-YK9D",
+    data=date(2026, 11, 3),
+)
+
+
+def test_carta_tem_endereco_codigo_e_processo_mascarado() -> None:
+    pdf = gerar_carta(CARTA)
+    assert pdf.startswith(b"%PDF-")
+    t = _texto(pdf)
+    for esperado in (
+        "Maria Exemplo da Silva",
+        "Rua das Flores, 100",
+        "01234-567",
+        "3 de novembro de 2026",
+        "3REX-48MB-YK9D",
+        "https://app.exemplo.com.br/verificar/3REX-48MB-YK9D",
+        "7425150-**.2021.4.03.****",
+        "Nunca cobramos nenhum valor do credor.",
+        "(11) 4000-0000",
+        "não ser mais contatado",
+    ):
+        assert esperado in t, esperado
+    assert "74251505520214038271" not in t
+    assert "7425150-55" not in t
+
+
+def test_carta_sem_link_publico_ainda_traz_o_codigo() -> None:
+    t = _texto(gerar_carta(replace(CARTA, url_verificacao=None, processo=None)))
+    assert "3REX-48MB-YK9D" in t
+    assert "Para falar conosco: (11) 4000-0000" in t
+    assert "processo nº" not in t
+
+
+def test_carta_escapa_texto_externo() -> None:
+    malicioso = replace(
+        CARTA, credor="<b>Maria</b> & <font color=red>X</font>", endereco="<a href='x'>Rua</a>\nCEP 01234-567"
+    )
+    t = _texto(gerar_carta(malicioso))
+    assert "<b>Maria</b> & <font color=red>X</font>" in t
+    assert "<a href='x'>Rua</a>" in t
+
+
+def test_processo_mascarado_so_aceita_cnj_completo() -> None:
+    assert processo_mascarado("74251505520214038271") == "7425150-**.2021.4.03.****"
+    assert processo_mascarado("123") is None
+    assert processo_mascarado(None) is None

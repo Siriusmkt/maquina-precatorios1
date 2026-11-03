@@ -167,7 +167,7 @@ export function Entrar() {
               <h2 className="text-2xl font-semibold tracking-tight">Nova senha</h2>
               <p className="mt-1.5 text-sm text-tinta-400">Mandamos um link para você escolher a senha nova.</p>
               {pedido === "enviado" ? (
-                <p className="mt-8 rounded-2xl bg-menta-400/10 p-4 text-[14px] leading-relaxed text-menta-200">
+                <p className="mt-8 rounded-2xl bg-menta-400/10 p-4 text-[14px] leading-relaxed text-menta-100">
                   Se esse e-mail tiver conta, o link chega em instantes. Confira também o spam.
                 </p>
                 ) : (

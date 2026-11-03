@@ -94,6 +94,17 @@ async function main() {
   await pagina.getByText("Selo anti-golpe").scrollIntoViewIfNeeded();
   await foto("07-lead-codigo-e-contato");
 
+  // Conversa do lead: cadencia e carta ficam no mesmo bloco
+  await pagina.getByText("Conversa", { exact: true }).scrollIntoViewIfNeeded();
+  await pagina.waitForTimeout(900);
+  await foto("07b-lead-conversa");
+
+  // Contato: cadencias e WhatsApp oficial
+  await pagina.getByRole("link", { name: "Contato" }).first().click();
+  await pagina.getByText("Regras que a máquina nunca quebra").waitFor();
+  await pagina.waitForTimeout(2200);
+  await foto("07c-contato", true);
+
   // 5. Paleta de comandos: acha o credor pelo comeco do sobrenome
   await pagina.keyboard.press("Control+k");
   const termo = nomeCredor.split(" ")[1]?.slice(0, 4) ?? nomeCredor.slice(0, 4);

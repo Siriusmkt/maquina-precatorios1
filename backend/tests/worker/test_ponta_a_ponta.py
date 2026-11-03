@@ -42,8 +42,8 @@ async def test_ciclo_do_worker_chega_ao_radar_e_so_revela_o_credor_a_quem_assume
 
     # 1. Um ciclo completo do worker, montado como em producao (pool como maquina_worker).
     transporte = httpx.MockTransport(djen)
-    async with montar(config_worker(banco_worker), transporte_djen=transporte, extrator=leitor) as pipeline:
-        resumo = await pipeline.ciclo()
+    async with montar(config_worker(banco_worker), transporte_djen=transporte, extrator=leitor) as servicos:
+        resumo = await servicos.pipeline.ciclo()
     assert (resumo.coletas, resumo.novas, resumo.triadas, resumo.relevantes, resumo.extraidas) == (2, 2, 2, 1, 1)
     assert resumo.falhas == 0
     assert not resumo.bloqueado

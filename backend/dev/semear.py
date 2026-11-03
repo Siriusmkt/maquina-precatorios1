@@ -431,6 +431,31 @@ def main() -> None:  # noqa: PLR0912, PLR0915 - roteiro linear de carga de dados
         c.execute("select app.emitir_verificacao(%s, %s)", [alvo, carta[0] if carta else None])
         codigo = c.fetchone()[0]  # type: ignore[index]
         c.execute("select app.consultar_verificacao(%s)", [codigo])
+
+        # Contato: cadencia padrao, contato oficial da carta e tarefas abertas no painel.
+        passos = [
+            {"dia": 0, "canal": "whatsapp", "modelo": "apresentacao_precatorio"},
+            {"dia": 3, "canal": "ligacao", "instrucao": "Ligar e oferecer o código anti-golpe"},
+            {"dia": 7, "canal": "carta"},
+        ]
+        c.execute(
+            "insert into app.cadencias (tenant_id, nome, passos) values (%s, 'Padrão 7 dias', %s)",
+            [tenant, json.dumps(passos)],
+        )
+        c.execute(
+            "update app.tenants set config = config || %s where id = %s",
+            [json.dumps({"contato_publico": "(11) 4000-0000 · contato@demo.local"}), tenant],
+        )
+        gestor = ids_usuarios["gestor@demo.local"]
+        for titulo, estagio_alvo, dias in (
+            ("Ligar para o credor e oferecer o código anti-golpe", "em_contato", 0),
+            ("Imprimir e postar a carta com o código", "respondeu", 1),
+        ):
+            c.execute(
+                """insert into app.tarefas (tenant_id, lead_id, titulo, responsavel_id, criado_por, vence_em)
+                   values (%s, %s, %s, %s, %s, now() + make_interval(days => %s))""",
+                [tenant, lead_por_estagio[estagio_alvo], titulo, gestor, operadora, dias],
+            )
         conn.commit()
     print("Codigo anti-golpe de demonstracao:", codigo)
     print("Base de demonstracao pronta. Usuarios:", ", ".join(USUARIOS_DEMO), "| senha:", SENHA_DEMO)

@@ -1,5 +1,5 @@
 /** Paleta ⌘K: navegar e achar credores sem tirar a mao do teclado. */
-import { CornerDownLeft, KanbanSquare, LayoutDashboard, Radar, Search, UserRound } from "lucide-react";
+import { CornerDownLeft, KanbanSquare, LayoutDashboard, MessageCircle, Radar, Search, UserRound, Users } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
@@ -34,6 +34,8 @@ export function PaletaDeComandos({ aberta, aoFechar }: { aberta: boolean; aoFech
       { id: "painel", rotulo: "Ir para o Painel", icone: <LayoutDashboard className="size-4" />, ir: "/app" },
       { id: "radar", rotulo: "Abrir o Radar", icone: <Radar className="size-4" />, ir: "/app/radar" },
       { id: "funil", rotulo: "Ver o Funil", icone: <KanbanSquare className="size-4" />, ir: "/app/leads" },
+      { id: "contato", rotulo: "Cadências e WhatsApp", icone: <MessageCircle className="size-4" />, ir: "/app/contato" },
+      { id: "equipe", rotulo: "Equipe e preferências", icone: <Users className="size-4" />, ir: "/app/equipe" },
     ];
     const deLeads: Opcao[] = (leads.data ?? []).map((l) => ({
       id: l.id,

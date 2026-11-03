@@ -20,7 +20,7 @@ export class ErroApi extends Error {
   }
 }
 
-type Metodo = "GET" | "POST" | "PATCH" | "DELETE";
+type Metodo = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 interface Opcoes {
   metodo?: Metodo;
@@ -125,10 +125,17 @@ export async function api<T>(caminho: string, opcoes: Opcoes = {}): Promise<T> {
   return (await resposta.json()) as T;
 }
 
-/** Baixa um arquivo da API (PDF): renova a sessao se preciso e entrega como download. */
-export async function baixar(caminho: string): Promise<void> {
-  const buscar = () => fetch(`/api${caminho}`, { credentials: "same-origin", cache: "no-store", redirect: "error" });
+/**
+ * Baixa um arquivo da API (PDF) e entrega como download. POST quando gerar o
+ * arquivo tambem registra algo (a carta vira interacao): leva o CSRF como o resto.
+ */
+export async function baixar(caminho: string, metodo: "GET" | "POST" = "GET"): Promise<void> {
+  const buscar = () => enviar(caminho, { metodo });
   let resposta = await buscar();
+  if (resposta.status === 403 && (await erroDe(resposta.clone())).codigo === "csrf_invalido") {
+    esquecerCsrf();
+    resposta = await buscar();
+  }
   if (resposta.status === 401 && (await renovarSessao())) resposta = await buscar();
   if (!resposta.ok) throw await erroDe(resposta);
   const nome = /filename="([^"]+)"/.exec(resposta.headers.get("content-disposition") ?? "")?.[1] ?? "documento.pdf";

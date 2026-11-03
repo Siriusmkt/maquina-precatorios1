@@ -135,7 +135,7 @@ export default function DefinirSenha() {
                 Links de convite e de nova senha valem por pouco tempo e só uma vez. Peça outro abaixo.
               </p>
               {pedido === "enviado" ? (
-                <p className="mt-7 rounded-2xl bg-menta-400/10 p-4 text-[14px] text-menta-200">
+                <p className="mt-7 rounded-2xl bg-menta-400/10 p-4 text-[14px] text-menta-100">
                   Se esse e-mail tiver conta, um link novo chega em instantes. Confira também o spam.
                 </p>
               ) : (
