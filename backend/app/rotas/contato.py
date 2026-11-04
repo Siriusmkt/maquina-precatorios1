@@ -61,6 +61,8 @@ class Modelo(BaseModel):
 class ConfigWhatsApp(BaseModel):
     model_config = ConfigDict(extra="forbid")
     phone_number_id: Annotated[str, StringConstraints(pattern=r"^[0-9]{5,30}$")]
+    # Conta do WhatsApp Business: opcional, so para o worker ler o status dos modelos na Meta.
+    waba_id: Annotated[str, StringConstraints(pattern=r"^[0-9]{5,30}$")] | None = None
     numero_exibicao: Annotated[str, StringConstraints(strip_whitespace=True, max_length=30)] = ""
     versao: Annotated[str, StringConstraints(pattern=r"^v[0-9]{2}\.[0-9]$")] = "v23.0"
     modelos: list[Modelo] = Field(default_factory=list, max_length=30)
@@ -75,13 +77,17 @@ class ConfigWhatsApp(BaseModel):
         return self
 
     def publica(self) -> dict[str, Any]:
-        return self.model_dump(exclude={"token", "app_secret"})
+        publica = self.model_dump(exclude={"token", "app_secret"})
+        if publica.get("waba_id") is None:
+            publica.pop("waba_id", None)
+        return publica
 
 
 class IntegracaoWhatsApp(BaseModel):
     configurada: bool
     ativa: bool
     phone_number_id: str | None
+    waba_id: str | None = None
     numero_exibicao: str | None
     versao: str | None
     modelos: list[Modelo]
@@ -114,6 +120,7 @@ async def ver_whatsapp(tenant_id: uuid.UUID, usuario: Usuario, request: Request,
         configurada=linha is not None,
         ativa=bool(linha and linha["ativa"]),
         phone_number_id=config.get("phone_number_id"),
+        waba_id=config.get("waba_id"),
         numero_exibicao=config.get("numero_exibicao"),
         versao=config.get("versao"),
         modelos=[Modelo.model_validate(m) for m in config.get("modelos") or []],
@@ -343,6 +350,8 @@ class PedidoWhatsApp(BaseModel):
     contato_id: uuid.UUID
     texto: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4096)] | None = None
     modelo: Annotated[str, StringConstraints(pattern=NOME_DO_MODELO.pattern)] | None = None
+    # O texto partiu de um rascunho do copiloto (revisado por quem envia): entra nas metricas.
+    rascunho_ia: bool = False
 
     @model_validator(mode="after")
     def _um_ou_outro(self) -> PedidoWhatsApp:
@@ -387,7 +396,7 @@ async def pedir_whatsapp(
             ultima: datetime | None = alvo["ultima_do_credor"]
             if ultima is None or datetime.now(ultima.tzinfo) - ultima > JANELA:
                 raise ErroApi(409, "fora_da_janela")
-            conteudo = {"texto": dados.texto}
+            conteudo = {"texto": dados.texto} | ({"rascunho_ia": True} if dados.rascunho_ia else {})
         cursor = await conn.execute(
             """insert into app.whatsapp_envios (tenant_id, lead_id, contato_id, tipo, conteudo, pedido_por)
                values (%s, %s, %s, %s, %s, %s) returning id""",

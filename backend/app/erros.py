@@ -89,6 +89,12 @@ MENSAGENS: dict[str, str] = {
     "armazenamento_indisponivel": "O armazenamento de documentos não está disponível agora.",
     "sala_fechada": "Esta sala de cessão não recebe mais documentos.",
     "contato_ilegivel": "Não foi possível ler este contato. Cadastre de novo.",
+    "conversa_nao_encontrada": "Ainda não há conversa de WhatsApp com este credor.",
+    "ia_desligada": "O copiloto de IA está desligado. Ligue em WhatsApp › Automação e IA.",
+    "responsavel_invalido": "Essa pessoa não faz parte da equipe.",
+    "modelo_em_uso": "Esse modelo é usado no follow-up ou numa cadência. Tire de lá antes de remover.",
+    "whatsapp_nao_configurado": "Configure o WhatsApp oficial na tela Contato antes.",
+    "resposta_rapida_nao_encontrada": "Resposta rápida não encontrada.",
 }
 
 _STATUS_NEGOCIO = {"MQ403": 403, "MQ404": 404, "MQ409": 409, "MQ422": 422, "MQ429": 429}

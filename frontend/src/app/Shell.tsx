@@ -10,6 +10,7 @@ import {
   LogOut,
   Menu,
   MessageCircle,
+  MessagesSquare,
   Radar as IconeRadar,
   ScanSearch,
   Search,
@@ -19,12 +20,13 @@ import { AnimatePresence, LayoutGroup, motion } from "motion/react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { NavLink, useLocation, useNavigate, useOutlet } from "react-router";
 import { ErroApi, aoPerderSessao, api, renovarSessao } from "@/api/cliente";
-import { usePerfil } from "@/api/consultas";
+import { usePerfil, useResumoCentral } from "@/api/consultas";
 import { Fundo, Logo } from "@/componentes/cena";
 import { cn } from "@/lib/cn";
 import { NOMES_PAPEL, NOMES_PLANO } from "@/lib/formato";
 import { CINEMA, mola, transicaoDeRota } from "@/lib/movimento";
 import { PaletaDeComandos } from "./PaletaDeComandos";
+import { Sino } from "./Sino";
 import { Contexto, type ContextoApp, guardarTenant, tenantGuardado } from "./contexto";
 
 const NAVEGACAO = [
@@ -32,12 +34,20 @@ const NAVEGACAO = [
   { para: "/app/radar", rotulo: "Radar", icone: IconeRadar, fim: false },
   { para: "/app/leads", rotulo: "Funil", icone: KanbanSquare, fim: false },
   { para: "/app/resolver", rotulo: "Resolver", icone: ScanSearch, fim: false },
+  { para: "/app/whatsapp", rotulo: "WhatsApp", icone: MessagesSquare, fim: false },
   { para: "/app/contato", rotulo: "Contato", icone: MessageCircle, fim: false },
   { para: "/app/fechamento", rotulo: "Fechamento", icone: Handshake, fim: false },
   { para: "/app/equipe", rotulo: "Equipe", icone: Users, fim: false },
 ];
 
-function ItemNav({ para, rotulo, icone: Icone, fim, recolhida }: (typeof NAVEGACAO)[number] & { recolhida: boolean }) {
+function ItemNav({
+  para,
+  rotulo,
+  icone: Icone,
+  fim,
+  recolhida,
+  selo,
+}: (typeof NAVEGACAO)[number] & { recolhida: boolean; selo?: number }) {
   return (
     <NavLink to={para} end={fim} className="group relative block rounded-xl outline-none">
       {({ isActive }) => (
@@ -62,6 +72,9 @@ function ItemNav({ para, rotulo, icone: Icone, fim, recolhida }: (typeof NAVEGAC
             />
           )}
           <Icone className={cn("relative size-[18px] shrink-0", isActive && "text-menta-300")} />
+          {Boolean(selo) && recolhida && (
+            <span className="absolute left-7 top-2 size-2 rounded-full bg-menta-400 shadow-[0_0_8px_rgb(78_240_196)]" aria-hidden />
+          )}
           <AnimatePresence initial={false}>
             {!recolhida && (
               <motion.span
@@ -75,6 +88,16 @@ function ItemNav({ para, rotulo, icone: Icone, fim, recolhida }: (typeof NAVEGAC
               </motion.span>
             )}
           </AnimatePresence>
+          {Boolean(selo) && !recolhida && (
+            <motion.span
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              className="relative ml-auto grid h-5 min-w-5 place-items-center rounded-full bg-menta-400 px-1.5 text-[11px] font-semibold text-noite-950"
+              aria-label={`${selo} para responder`}
+            >
+              {selo}
+            </motion.span>
+          )}
         </span>
       )}
     </NavLink>
@@ -94,6 +117,8 @@ function OutletAnimado() {
 }
 
 function Lateral({ recolhida, ctx, aoSair, aoRecolher }: { recolhida: boolean; ctx: ContextoApp; aoSair: () => void; aoRecolher?: () => void }) {
+  const central = useResumoCentral(ctx.tenant.id);
+  const selos: Record<string, number | undefined> = { "/app/whatsapp": central.data?.precisa_resposta };
   return (
     <div className="flex h-full flex-col">
       <div className="flex h-16 items-center justify-between px-4">
@@ -107,7 +132,7 @@ function Lateral({ recolhida, ctx, aoSair, aoRecolher }: { recolhida: boolean; c
       <LayoutGroup id="nav">
         <nav className="mt-6 space-y-1 px-3" aria-label="Principal">
           {NAVEGACAO.map((item) => (
-            <ItemNav key={item.para} {...item} recolhida={recolhida} />
+            <ItemNav key={item.para} {...item} recolhida={recolhida} selo={selos[item.para]} />
           ))}
         </nav>
       </LayoutGroup>
@@ -296,9 +321,11 @@ export default function Shell() {
               </span>
               <span className="hidden sm:inline">Radar ao vivo · DJEN, DataJud, DEPRE, TRTs</span>
             </span>
+            <div className="ml-auto" />
+            <Sino tenant={ctx.tenant.id} />
             <button
               onClick={() => setPaleta(true)}
-              className="ml-auto flex h-9 w-full max-w-[280px] items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 text-[13px] text-tinta-500 transition hover:border-white/15 hover:text-tinta-300"
+              className="flex h-9 w-full max-w-[280px] items-center gap-2 rounded-xl border border-white/8 bg-white/[0.03] px-3 text-[13px] text-tinta-500 transition hover:border-white/15 hover:text-tinta-300"
             >
               <Search className="size-4" />
               <span className="flex-1 text-left">Buscar credor, ir para…</span>

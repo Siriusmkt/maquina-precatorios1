@@ -14,8 +14,10 @@ from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
+from worker.acompanhamento import Acompanhamento
 from worker.bureau import ClienteBigDataCorp
 from worker.config import ConfiguracoesWorker
+from worker.copiloto import Copiloto, Gerador, GeradorClaude
 from worker.datajud import ClienteDatajud
 from worker.djen import ClienteDjen
 from worker.enriquecedor import Enriquecedor
@@ -98,6 +100,8 @@ class Servicos:
     mensageiro: Mensageiro
     resolvedor: Resolvedor
     enriquecedor: Enriquecedor
+    copiloto: Copiloto
+    acompanhamento: Acompanhamento
 
 
 @contextlib.asynccontextmanager
@@ -109,19 +113,31 @@ async def montar(
     transporte_bureau: httpx.AsyncBaseTransport | None = None,
     transporte_datajud: httpx.AsyncBaseTransport | None = None,
     extrator: Extrator | None = None,
+    gerador: Gerador | None = None,
 ) -> AsyncIterator[Servicos]:
-    """Abre e fecha tudo. Os transportes e o extrator opcionais existem para os testes."""
+    """Abre e fecha tudo. Os transportes, o extrator e o gerador opcionais existem para os testes."""
     async with contextlib.AsyncExitStack() as pilha:
-        pool = criar_pool(config.worker_database_url.get_secret_value(), max_size=config.leitor_concorrencia + 4)
+        pool = criar_pool(
+            config.worker_database_url.get_secret_value(),
+            max_size=config.leitor_concorrencia + config.copiloto_concorrencia + 4,
+        )
         await pool.open()
         pilha.push_async_callback(pool.close)
         djen = await pilha.enter_async_context(cliente_djen(config, transporte=transporte_djen))
-        if extrator is None and config.leitor_ativo and config.anthropic_api_key:
+        cliente_ia: anthropic.AsyncAnthropic | None = None
+        if config.anthropic_api_key and (
+            (extrator is None and config.leitor_ativo) or (gerador is None and config.copiloto_ativo)
+        ):
             # Credencial so pelo ambiente (ANTHROPIC_API_KEY): nunca em codigo ou arquivo versionado.
             cliente_ia = anthropic.AsyncAnthropic(
                 api_key=config.anthropic_api_key.get_secret_value(), timeout=120.0, max_retries=3
             )
             pilha.push_async_callback(cliente_ia.close)
+        if gerador is None and config.copiloto_ativo and cliente_ia is not None:
+            gerador = GeradorClaude(cliente_ia, modelo=config.copiloto_modelo, esforco=config.copiloto_esforco)
+        elif gerador is None:
+            log.warning("Copiloto do WhatsApp sem IA (ANTHROPIC_API_KEY ausente ou MAQUINA_COPILOTO_ATIVO=false)")
+        if extrator is None and config.leitor_ativo and cliente_ia is not None:
             extrator = ExtratorClaude(
                 cliente_ia,
                 modelo=config.leitor_modelo,
@@ -154,4 +170,6 @@ async def montar(
             mensageiro=mensageiro,
             resolvedor=resolvedor,
             enriquecedor=enriquecedor,
+            copiloto=Copiloto(pool, config, gerador, relogio=agora_sp),
+            acompanhamento=Acompanhamento(pool, relogio=agora_sp),
         )

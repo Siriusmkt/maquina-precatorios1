@@ -78,6 +78,17 @@ class ConfiguracoesWorker(BaseSettings):
     datajud_intervalo_s: float = Field(default=1.0, ge=0.2)
     datajud_por_ciclo: int = Field(default=50, ge=1, le=1000)
     datajud_revisitar_dias: int = Field(default=7, ge=1, le=90)
+    # Copiloto do WhatsApp (mesma ANTHROPIC_API_KEY do Leitor). Cada cliente liga a IA e define o
+    # orcamento na tela; o teto abaixo protege a operacao (US$ por cliente por dia).
+    copiloto_ativo: bool = True
+    copiloto_modelo: str = "claude-opus-5-5"
+    copiloto_esforco: Esforco = "low"
+    copiloto_concorrencia: int = Field(default=3, ge=1, le=16)
+    copiloto_orcamento_max_usd: Decimal = Field(default=Decimal("20"), ge=0)
+    copiloto_s: float = Field(default=3.0, ge=1)
+    # Follow-up (minutos importam pouco) e leitura da saude do numero/modelos na Meta.
+    followup_s: float = Field(default=60.0, ge=10)
+    meta_sincronia_s: float = Field(default=1800.0, ge=60)
     # Resolver (bureau): as credenciais de cada cliente ficam cifradas no banco, nao aqui.
     resolvedor_s: float = Field(default=30.0, ge=2)
     bigdatacorp_url: str = "https://plataforma.bigdatacorp.com.br/pessoas"

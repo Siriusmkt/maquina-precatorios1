@@ -337,6 +337,7 @@ function BlocoCadencias({ tenant, podeEditar, modelos }: { tenant: string; podeE
 // ------------------------------------------------------------------ WhatsApp
 interface RascunhoWhatsApp {
   phone_number_id: string;
+  waba_id: string;
   numero_exibicao: string;
   versao: string;
   token: string;
@@ -347,6 +348,7 @@ interface RascunhoWhatsApp {
 function rascunhoDe(w?: IntegracaoWhatsApp): RascunhoWhatsApp {
   return {
     phone_number_id: w?.phone_number_id ?? "",
+    waba_id: w?.waba_id ?? "",
     numero_exibicao: w?.numero_exibicao ?? "",
     versao: w?.versao ?? "v23.0",
     token: "",
@@ -467,6 +469,10 @@ function BlocoWhatsApp({ tenant, aoCarregar }: { tenant: string; aoCarregar: (mo
       avisar({ tom: "erro", titulo: "Confira o Phone number ID", texto: "Só números, como aparece no painel da Meta." });
       return;
     }
+    if (r.waba_id.trim() && !/^\d{5,30}$/.test(r.waba_id.trim())) {
+      avisar({ tom: "erro", titulo: "Confira o ID da conta (WABA)", texto: "Só números, como aparece no WhatsApp Manager." });
+      return;
+    }
     if (r.modelos.some((m) => !modeloValido(m.nome))) {
       avisar({ tom: "erro", titulo: "Confira os nomes dos modelos", texto: "Letras minúsculas, números e _ , igual ao nome aprovado na Meta." });
       return;
@@ -477,6 +483,7 @@ function BlocoWhatsApp({ tenant, aoCarregar }: { tenant: string; aoCarregar: (mo
     }
     const corpo: Record<string, unknown> = {
       phone_number_id: r.phone_number_id.trim(),
+      waba_id: r.waba_id.trim() || null,
       numero_exibicao: r.numero_exibicao.trim(),
       versao: r.versao.trim(),
       modelos: r.modelos,
@@ -526,6 +533,13 @@ function BlocoWhatsApp({ tenant, aoCarregar }: { tenant: string; aoCarregar: (mo
         <div className="relative mt-5 grid gap-3 sm:grid-cols-2">
           <Campo rotulo="Phone number ID" inputMode="numeric" value={r.phone_number_id} onChange={(e) => setR({ ...r, phone_number_id: e.target.value })} />
           <Campo rotulo="Número que o credor vê" value={r.numero_exibicao} maxLength={30} onChange={(e) => setR({ ...r, numero_exibicao: e.target.value })} />
+          <Campo
+            className="sm:col-span-2"
+            rotulo="ID da conta (WABA), opcional: lê o status dos modelos"
+            inputMode="numeric"
+            value={r.waba_id}
+            onChange={(e) => setR({ ...r, waba_id: e.target.value })}
+          />
         </div>
         <AnimatePresence initial={false}>
           {pedeSegredos ? (

@@ -11,10 +11,13 @@ import hashlib
 import hmac
 import json
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
+
+from app.dominio.whatsapp import IDIOMA, NOME_DO_MODELO
 
 log = logging.getLogger("maquina.whatsapp")
 
@@ -23,6 +26,10 @@ URL_GRAPH = "https://graph.facebook.com"
 CODIGOS_DEFINITIVOS = {100, 131008, 131009, 131021, 131026, 131047, 131051, 132000, 132001, 132005, 132007, 132012}
 CODIGOS_DE_TOKEN = {190}
 TAMANHO_MAXIMO_TEXTO = 4096
+CAMPOS_DO_NUMERO = "display_phone_number,verified_name,quality_rating,code_verification_status"
+# Saude do numero: qualidade (GREEN/YELLOW/RED), limite de conversas por dia (tier), nome aprovado, status.
+CAMPOS_DA_SAUDE = CAMPOS_DO_NUMERO + ",messaging_limit_tier,name_status,status,throughput,platform_type"
+VARIAVEL_DO_MODELO = re.compile(r"\{\{\s*([a-z0-9_]+)\s*\}\}")
 
 
 class ErroWhatsApp(Exception):
@@ -41,6 +48,51 @@ class Mensagem:
     tipo: str
     texto: str
     nome_perfil: str | None
+
+
+@dataclass(frozen=True)
+class ModeloMeta:
+    nome: str
+    idioma: str
+    categoria: str | None
+    status: str
+    corpo: str | None
+    variaveis: int
+    motivo: str | None
+
+
+def _objeto(valor: Any) -> dict[str, Any]:
+    return valor if isinstance(valor, dict) else {}
+
+
+def ler_modelo(m: Any) -> ModeloMeta | None:
+    """Um item de GET /{waba_id}/message_templates. Nome ou idioma fora do padrao: ignorado."""
+    if not isinstance(m, dict):
+        return None
+    nome, idioma, status = m.get("name"), m.get("language"), m.get("status")
+    if not (isinstance(nome, str) and NOME_DO_MODELO.match(nome) and isinstance(idioma, str) and IDIOMA.match(idioma)):
+        return None
+    if not isinstance(status, str) or not status:
+        return None
+    corpo = next(
+        (
+            str(c.get("text"))
+            for c in m.get("components") or []
+            if isinstance(c, dict) and str(c.get("type", "")).upper() == "BODY" and c.get("text")
+        ),
+        None,
+    )
+    motivo = m.get("rejected_reason")
+    categoria = m.get("category")
+    return ModeloMeta(
+        nome=nome,
+        idioma=idioma,
+        categoria=str(categoria)[:30] if isinstance(categoria, str) else None,
+        status=status[:30],
+        corpo=corpo[:2000] if corpo else None,
+        variaveis=min(len(set(VARIAVEL_DO_MODELO.findall(corpo or ""))), 20),
+        motivo=str(motivo)[:200] if isinstance(motivo, str) and motivo and motivo != "NONE" else None,
+    )
 
 
 @dataclass(frozen=True)
@@ -137,12 +189,14 @@ class ClienteWhatsApp:
                 raise ErroWhatsApp("resposta_inesperada", retentavel=True) from exc
         raise self._erro(resposta)
 
-    async def conferir_numero(self, *, versao: str, phone_number_id: str, token: str) -> dict[str, Any]:
+    async def conferir_numero(
+        self, *, versao: str, phone_number_id: str, token: str, campos: str = CAMPOS_DO_NUMERO
+    ) -> dict[str, Any]:
         """Le os dados publicos do numero da empresa: prova que o token e o phone_number_id combinam."""
         try:
             resposta = await self._http.get(
                 f"{self._url}/{versao}/{phone_number_id}",
-                params={"fields": "display_phone_number,verified_name,quality_rating,code_verification_status"},
+                params={"fields": campos},
                 headers={"authorization": f"Bearer {token}"},
             )
         except httpx.HTTPError as exc:
@@ -154,6 +208,38 @@ class ClienteWhatsApp:
                 raise ErroWhatsApp("resposta_inesperada", retentavel=True) from exc
             return dados if isinstance(dados, dict) else {}
         raise self._erro(resposta)
+
+    async def listar_modelos(self, *, versao: str, waba_id: str, token: str, paginas: int = 5) -> list[ModeloMeta]:
+        """Modelos da conta na Meta (status, categoria e texto). Paginado pelo cursor, nunca pela URL devolvida."""
+        modelos: list[ModeloMeta] = []
+        depois: str | None = None
+        for _ in range(paginas):
+            params = {"fields": "name,language,status,category,components,rejected_reason", "limit": "100"}
+            if depois:
+                params["after"] = depois
+            try:
+                resposta = await self._http.get(
+                    f"{self._url}/{versao}/{waba_id}/message_templates",
+                    params=params,
+                    headers={"authorization": f"Bearer {token}"},
+                )
+            except httpx.HTTPError as exc:
+                raise ErroWhatsApp(f"rede: {type(exc).__name__}", retentavel=True) from exc
+            if resposta.status_code != 200:
+                raise self._erro(resposta)
+            try:
+                dados = resposta.json()
+            except ValueError as exc:
+                raise ErroWhatsApp("resposta_inesperada", retentavel=True) from exc
+            if not isinstance(dados, dict):
+                raise ErroWhatsApp("resposta_inesperada", retentavel=True)
+            modelos.extend(m for item in dados.get("data") or [] if (m := ler_modelo(item)))
+            paginacao = _objeto(dados.get("paging"))
+            cursor = _objeto(paginacao.get("cursors")).get("after")
+            if not paginacao.get("next") or not isinstance(cursor, str) or not cursor:
+                break
+            depois = cursor[:500]
+        return modelos
 
     @staticmethod
     def _erro(resposta: httpx.Response) -> ErroWhatsApp:

@@ -129,6 +129,27 @@ select status, count(*), max(recebido_em) from app.whatsapp_recebidos group by 1
 select tenant_id, erro, atualizado_em from app.integracoes where erro is not null;
 ```
 
+### 5.1 Central do WhatsApp com IA (copiloto e follow-up)
+
+A tela **WhatsApp** junta a caixa de entrada da equipe, o copiloto de IA, o follow-up automático, as respostas rápidas, os modelos com o status da Meta, as métricas e a saúde do número.
+
+1. **Copiloto.** Usa a mesma `ANTHROPIC_API_KEY` do Leitor IA (só o `worker` recebe a chave). Por padrão `MAQUINA_COPILOTO_ATIVO=true`, modelo `claude-opus-5-5` com esforço `low`. Cada cliente liga a IA e define o orçamento diário em **WhatsApp › Automação e IA**; `MAQUINA_COPILOTO_ORCAMENTO_MAX_USD` é o teto por cliente por dia, que vale mais que o da tela. A cada mensagem recebida, o worker lê a conversa (só o primeiro nome do credor, a fase do atendimento, tribunal e devedor) e grava a intenção, o resumo, o próximo passo, um alerta e o rascunho. **Nada sai sem uma pessoa**: o rascunho vai para o compositor, onde alguém revisa e envia. Rascunho que peça PIX, taxa, senha, código ou dados bancários é descartado antes de chegar à tela.
+2. **Follow-up.** Ligado na tela, retoma conversas em que o credor parou de responder, só no horário comercial do cliente (fuso de Brasília), até 5 passos (ex.: 24 h e 72 h). No modo *Enviar modelo sozinho*, sai só a mensagem modelo aprovada do passo e só para quem autorizou; sem autorização, vira tarefa. No modo *Sugerir à equipe*, vira tarefa e, com a IA ligada, um rascunho de retomada. Leads com cadência em andamento ficam com a cadência.
+3. **Modelos e saúde do número.** Salve o **ID da conta do WhatsApp Business (WABA)** na tela Contato: a cada `MAQUINA_META_SINCRONIA_S` (30 min) o worker lê na Meta a qualidade do número (verde, amarelo, vermelho), o limite de conversas por dia, o status e os modelos com o status de aprovação. Sem o WABA, a saúde do número continua sendo lida; só a lista de modelos fica sem status.
+4. **Respostas rápidas.** A equipe digita `/` no compositor. Variáveis `{primeiro_nome}`, `{empresa}`, `{atendente}`, `{codigo}` e `{link_verificacao}` são preenchidas na hora; se faltar valor, a tela não deixa enviar com a chave aberta.
+
+Acompanhamento:
+
+```sql
+-- pedidos ao copiloto e custo do dia por cliente
+select tenant_id, status, count(*), sum(custo_usd) from app.ia_pedidos
+ where criado_em > now() - interval '1 day' group by 1, 2;
+-- conversas esperando resposta por cliente
+select tenant_id, count(*) from app.whatsapp_conversas where status = 'precisa_resposta' group by 1;
+-- saúde do número lida da Meta
+select tenant_id, saude -> 'numero' ->> 'quality_rating', saude_em from app.integracoes where tipo = 'whatsapp';
+```
+
 ## 6. Resolver (achar telefone e endereço do credor)
 
 Duas formas, as duas gravando os contatos cifrados com origem "bureau" e base legal "legítimo interesse":

@@ -314,6 +314,7 @@ export interface IntegracaoWhatsApp {
   configurada: boolean;
   ativa: boolean;
   phone_number_id: string | null;
+  waba_id: string | null;
   numero_exibicao: string | null;
   versao: string | null;
   modelos: ModeloWhatsApp[];
@@ -526,4 +527,246 @@ export interface FonteDoRadar {
   nome: string;
   ativo: boolean;
   ultima_coleta_em: string | null;
+}
+
+// ------------------------------------------------------------------ Central do WhatsApp
+export type StatusConversa = "precisa_resposta" | "aguardando_credor" | "resolvida";
+export type FiltroConversa =
+  | "todas"
+  | "precisa_resposta"
+  | "aguardando_credor"
+  | "resolvida"
+  | "minhas"
+  | "sem_responsavel"
+  | "urgentes"
+  | "com_alerta";
+export type Intencao =
+  | "interesse"
+  | "duvida"
+  | "negociacao"
+  | "desconfianca"
+  | "documentos"
+  | "sem_interesse"
+  | "pedido_parar"
+  | "outro";
+export type Sentimento = "positivo" | "neutro" | "negativo";
+export type Urgencia = "alta" | "media" | "baixa";
+export type Tom = "cordial" | "formal" | "direto";
+export type ModoFollowup = "sugerir" | "automatico";
+
+export interface ResumoCentral {
+  precisa_resposta: number;
+  nao_lidas: number;
+  minhas: number;
+  urgentes: number;
+  com_alerta: number;
+  ia_ativa: boolean;
+  whatsapp_ativo: boolean;
+  etiquetas: { nome: string; quantidade: number }[];
+}
+
+export interface ConversaResumo {
+  lead_id: string;
+  credor: string | null;
+  estagio: Estagio;
+  tribunal: string | null;
+  valor: string | null;
+  responsavel_id: string | null;
+  responsavel: string | null;
+  status: StatusConversa;
+  nao_lidas: number;
+  etiquetas: string[];
+  intencao: Intencao | null;
+  sentimento: Sentimento | null;
+  urgencia: Urgencia | null;
+  alerta: string | null;
+  tem_rascunho: boolean;
+  ia_pensando: boolean;
+  ultima_mensagem: string | null;
+  ultima_direcao: "entrada" | "saida" | null;
+  ultima_em: string;
+  janela_ate: string | null;
+  followup_tentativas: number;
+  followup_pausado: boolean;
+}
+
+export interface MensagemConversa {
+  id: string;
+  direcao: "entrada" | "saida";
+  autor: string;
+  autor_nome: string | null;
+  conteudo: string | null;
+  template: string | null;
+  status: "enviado" | "entregue" | "lido" | "falhou" | "respondido" | null;
+  criado_em: string;
+}
+
+export interface EnvioNaFila {
+  id: string;
+  tipo: "texto" | "modelo";
+  texto: string;
+  status: StatusEnvio;
+  erro: string | null;
+  rascunho_ia: boolean;
+  followup: number | null;
+  criado_em: string;
+}
+
+export interface PedidoIA {
+  id: string;
+  tipo: "analise" | "rascunho" | "followup";
+  origem: "usuario" | "automatico";
+  status: "pendente" | "pronto" | "falhou" | "ignorado";
+  erro: string | null;
+  instrucao: string | null;
+  criado_em: string;
+  concluido_em: string | null;
+}
+
+export interface AnaliseConversa {
+  intencao: Intencao | null;
+  intencao_rotulo: string | null;
+  sentimento: Sentimento | null;
+  urgencia: Urgencia | null;
+  resumo: string | null;
+  proximo_passo: string | null;
+  alerta: string | null;
+  analise_em: string | null;
+}
+
+export interface ConversaDetalhe extends ConversaResumo {
+  primeiro_nome: string;
+  ente: string | null;
+  natureza: string | null;
+  tipo_credito: string | null;
+  preco_sugerido: string | null;
+  analise: AnaliseConversa;
+  rascunho: string | null;
+  rascunho_em: string | null;
+  pedido_ia: PedidoIA | null;
+  mensagens: MensagemConversa[];
+  envios: EnvioNaFila[];
+  contato: { id: string; autorizado: boolean; opt_out: boolean; nao_me_ligue: boolean } | null;
+  janela_aberta: boolean;
+  proximo_followup_em: string | null;
+  verificacao: { codigo: string; link: string | null } | null;
+}
+
+export interface RespostaRapida {
+  id: string;
+  atalho: string;
+  titulo: string;
+  texto: string;
+  intencao: Intencao | null;
+  usos: number;
+  atualizado_em: string;
+}
+
+export interface PassoFollowup {
+  apos_horas: number;
+  modelo: string | null;
+}
+
+export interface Automacao {
+  ia_ativa: boolean;
+  analise_automatica: boolean;
+  tom: Tom;
+  instrucoes: string | null;
+  orcamento_ia_dia_usd: string;
+  followup_ativo: boolean;
+  followup_modo: ModoFollowup;
+  followup_passos: PassoFollowup[];
+  horario_inicio: number;
+  horario_fim: number;
+  dias_semana: number[];
+}
+
+export interface AutomacaoSalva extends Automacao {
+  configurada: boolean;
+  atualizado_em: string | null;
+  atualizado_por: string | null;
+  gasto_hoje_usd: string;
+  pedidos_hoje: number;
+}
+
+export interface ModeloDaCentral {
+  nome: string;
+  idioma: string;
+  cadastrado: boolean;
+  variaveis: VariavelModelo[] | null;
+  status_meta: string | null;
+  categoria: string | null;
+  corpo: string | null;
+  variaveis_meta: number | null;
+  motivo: string | null;
+  sincronizado_em: string | null;
+  usado_no_followup: boolean;
+  usado_em_cadencias: number;
+}
+
+export interface ContagemRotulada {
+  chave: string;
+  rotulo: string;
+  quantidade: number;
+}
+
+export interface MetricasWhatsApp {
+  dias: number;
+  inicio: string;
+  serie: { dia: string; enviadas: number; recebidas: number }[];
+  enviadas: number;
+  recebidas: number;
+  conversas_ativas: number;
+  conversas_novas: number;
+  taxa_resposta: number | null;
+  entregues: number;
+  lidas: number;
+  falhas: number;
+  taxa_entrega: number | null;
+  taxa_leitura: number | null;
+  tempo_resposta_mediano_min: number | null;
+  optouts: number;
+  followups_enviados: number;
+  rascunhos_ia_usados: number;
+  falhas_por_motivo: ContagemRotulada[];
+  intencoes: ContagemRotulada[];
+  atendentes: { nome: string; enviadas: number; conversas: number }[];
+  ia: {
+    pedidos: number;
+    prontos: number;
+    falhas: number;
+    bloqueados: number;
+    custo_usd: string | null;
+    custo_hoje_usd: string | null;
+    orcamento_dia_usd: string | null;
+  };
+}
+
+export type EstadoSaude = "ok" | "atencao" | "problema" | "info";
+
+export interface SaudeWhatsApp {
+  configurada: boolean;
+  ativa: boolean;
+  numero_exibicao: string | null;
+  nome_verificado: string | null;
+  qualidade: string | null;
+  limite_conversas: string | null;
+  status_numero: string | null;
+  saude_em: string | null;
+  erro: string | null;
+  webhook_ultimo_em: string | null;
+  recebidos_24h: number;
+  rejeitados_24h: number;
+  fila_recebidos: number;
+  envios_pendentes: number;
+  envios_falhos_24h: number;
+  ia_pendentes: number;
+  janelas_abertas: number;
+  contatos_telefone: number;
+  com_autorizacao: number;
+  optouts_30d: number;
+  nao_me_ligue: number;
+  modelos_aprovados: number;
+  modelos_cadastrados: number;
+  itens: { chave: string; titulo: string; estado: EstadoSaude; detalhe: string }[];
 }

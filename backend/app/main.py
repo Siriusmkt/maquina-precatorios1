@@ -18,7 +18,7 @@ from app.config import Configuracoes
 from app.erros import registrar_tratadores
 from app.logs import configurar_logs
 from app.recursos import Recursos, nomes_cookie
-from app.rotas import basicas, contato, documentos, equipe, espaco, fechamento, publico, resolver
+from app.rotas import basicas, contato, documentos, equipe, espaco, fechamento, publico, resolver, whatsapp
 from app.seguranca.cripto import CifraDeCampo
 from app.seguranca.http import ProtecaoCsrf, SegurancaHttp
 from app.seguranca.jwt import VerificadorJwt
@@ -110,6 +110,7 @@ def criar_app(
     app.include_router(contato.webhooks)
     app.include_router(resolver.router)
     app.include_router(fechamento.router)
+    app.include_router(whatsapp.router)
     app.include_router(publico.router)
 
     # Ordem: o ultimo adicionado e o mais externo.

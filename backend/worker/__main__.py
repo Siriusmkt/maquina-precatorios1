@@ -1,6 +1,6 @@
 """Linha de comando dos workers.
 
-python -m worker                      ciclo continuo (coleta -> triagem -> Leitor IA)
+python -m worker                      ciclo continuo (coleta, Leitor IA, WhatsApp, copiloto, follow-up)
 python -m worker coletar TJSP 2026-11-02 [--termo requisitório]
 python -m worker triar
 python -m worker extrair [--limite 50]
@@ -81,6 +81,9 @@ async def rodar(config: ConfiguracoesWorker) -> None:
                 repetir(servicos.mensageiro.ciclo, parar, config.mensageiro_s, "mensageiro"),
                 repetir(servicos.resolvedor.ciclo, parar, config.resolvedor_s, "resolvedor"),
                 repetir(servicos.enriquecedor.ciclo, parar, config.ciclo_s, "datajud"),
+                repetir(servicos.copiloto.ciclo, parar, config.copiloto_s, "copiloto"),
+                repetir(servicos.acompanhamento.ciclo, parar, config.followup_s, "followup"),
+                repetir(servicos.mensageiro.sincronizar_meta, parar, config.meta_sincronia_s, "meta"),
             )
     finally:
         parar.set()

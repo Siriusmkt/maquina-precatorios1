@@ -65,6 +65,12 @@ services:
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
       # WhatsApp: os tokens da Meta ficam cifrados no banco (cadastrados pela tela Contato), nao aqui.
       MAQUINA_MENSAGEIRO_S: ${MAQUINA_MENSAGEIRO_S:-}
+      MAQUINA_COPILOTO_ATIVO: ${MAQUINA_COPILOTO_ATIVO:-}
+      MAQUINA_COPILOTO_MODELO: ${MAQUINA_COPILOTO_MODELO:-}
+      MAQUINA_COPILOTO_ESFORCO: ${MAQUINA_COPILOTO_ESFORCO:-}
+      MAQUINA_COPILOTO_ORCAMENTO_MAX_USD: ${MAQUINA_COPILOTO_ORCAMENTO_MAX_USD:-}
+      MAQUINA_FOLLOWUP_S: ${MAQUINA_FOLLOWUP_S:-}
+      MAQUINA_META_SINCRONIA_S: ${MAQUINA_META_SINCRONIA_S:-}
       MAQUINA_URL_PUBLICA: ${MAQUINA_URL_PUBLICA:-}
       # Bureau (Resolver): as chaves de cada cliente ficam cifradas no banco (tela Resolver), nao aqui.
       MAQUINA_RESOLVEDOR_S: ${MAQUINA_RESOLVEDOR_S:-}

@@ -8,6 +8,18 @@ import {
 } from "@tanstack/react-query";
 import { api } from "./cliente";
 import type {
+  Automacao,
+  AutomacaoSalva,
+  ConversaDetalhe,
+  ConversaResumo,
+  FiltroConversa,
+  MetricasWhatsApp,
+  ModeloDaCentral,
+  RespostaRapida,
+  ResumoCentral,
+  SaudeWhatsApp,
+  StatusConversa,
+  VariavelModelo,
   Cadencia,
   Equipe,
   Estagio,
@@ -49,6 +61,16 @@ export const chaves = {
   cessoes: (t: string) => ["cessoes", t] as const,
   sala: (t: string, id: string) => ["sala", t, id] as const,
   bureau: (t: string) => ["bureau", t] as const,
+  central: (t: string) => ["central", t] as const,
+  centralResumo: (t: string) => ["central", t, "resumo"] as const,
+  conversas: (t: string, filtro: string, busca: string, etiqueta: string) =>
+    ["central", t, "conversas", filtro, busca, etiqueta] as const,
+  conversa: (t: string, lead: string) => ["central", t, "conversa", lead] as const,
+  respostas: (t: string) => ["central", t, "respostas"] as const,
+  automacao: (t: string) => ["central", t, "automacao"] as const,
+  modelos: (t: string) => ["central", t, "modelos"] as const,
+  metricas: (t: string, dias: number) => ["central", t, "metricas", dias] as const,
+  saudeWhatsApp: (t: string) => ["central", t, "saude"] as const,
 };
 
 function consulta(filtros: FiltrosRadar, cursor?: string): string {
@@ -469,4 +491,173 @@ export function pedirNovaSenha(email: string) {
 
 export function definirSenha(accessToken: string, senha: string) {
   return api<Perfil>("/auth/definir-senha", { metodo: "POST", corpo: { access_token: accessToken, senha }, semRenovar: true });
+}
+
+// ------------------------------------------------------------------ Central do WhatsApp
+export function useResumoCentral(tenant: string) {
+  return useQuery({
+    queryKey: chaves.centralResumo(tenant),
+    queryFn: () => api<ResumoCentral>(`/t/${tenant}/whatsapp/resumo`),
+    refetchInterval: 20_000,
+    staleTime: 10_000,
+  });
+}
+
+export function useConversas(tenant: string, filtro: FiltroConversa, busca: string, etiqueta: string) {
+  return useQuery({
+    queryKey: chaves.conversas(tenant, filtro, busca, etiqueta),
+    queryFn: ({ signal }) => {
+      const p = new URLSearchParams({ filtro, limite: "80" });
+      if (busca.trim()) p.set("busca", busca.trim());
+      if (etiqueta) p.set("etiqueta", etiqueta);
+      return api<ConversaResumo[]>(`/t/${tenant}/whatsapp/conversas?${p.toString()}`, { sinal: signal });
+    },
+    placeholderData: keepPreviousData,
+    refetchInterval: 12_000,
+  });
+}
+
+/** Enquanto a IA pensa ou um envio esta na fila, a conversa e lida de novo a cada 2,5 s. */
+export function useConversa(tenant: string, lead: string | null) {
+  return useQuery({
+    queryKey: chaves.conversa(tenant, lead ?? ""),
+    queryFn: () => api<ConversaDetalhe>(`/t/${tenant}/whatsapp/conversas/${lead}`),
+    enabled: Boolean(lead),
+    refetchInterval: (q) => {
+      const d = q.state.data;
+      return d && (d.ia_pensando || d.envios.some((e) => e.status === "pendente")) ? 2_500 : 10_000;
+    },
+  });
+}
+
+export function useAcoesDaConversa(tenant: string, lead: string) {
+  const cliente = useQueryClient();
+  const depois = () => {
+    void cliente.invalidateQueries({ queryKey: chaves.central(tenant) });
+    void cliente.invalidateQueries({ queryKey: chaves.lead(tenant, lead) });
+  };
+  const mudar = useMutation({
+    mutationFn: (v: {
+      status?: StatusConversa;
+      etiquetas?: string[];
+      followup_pausado?: boolean;
+      responsavel_id?: string;
+      sem_responsavel?: boolean;
+      descartar_rascunho?: boolean;
+    }) => api<void>(`/t/${tenant}/whatsapp/conversas/${lead}`, { metodo: "PATCH", corpo: v }),
+    onSuccess: depois,
+  });
+  const lida = useMutation({
+    mutationFn: () => api<void>(`/t/${tenant}/whatsapp/conversas/${lead}/lida`, { metodo: "POST" }),
+    onSuccess: () => void cliente.invalidateQueries({ queryKey: chaves.central(tenant) }),
+  });
+  const pedirIA = useMutation({
+    mutationFn: (v: { tipo?: "rascunho" | "analise"; instrucao?: string }) =>
+      api<{ id: string; status: string; ja_existia: boolean }>(`/t/${tenant}/whatsapp/conversas/${lead}/ia`, {
+        metodo: "POST",
+        corpo: v,
+      }),
+    onSuccess: depois,
+  });
+  const enviar = useMutation({
+    mutationFn: (v: { contato_id: string; texto?: string; modelo?: string; rascunho_ia?: boolean }) =>
+      api<{ id: string; status: string }>(`/t/${tenant}/leads/${lead}/whatsapp`, { metodo: "POST", corpo: v }),
+    onSuccess: depois,
+  });
+  return { mudar, lida, pedirIA, enviar };
+}
+
+export function useRespostas(tenant: string) {
+  return useQuery({
+    queryKey: chaves.respostas(tenant),
+    queryFn: () => api<RespostaRapida[]>(`/t/${tenant}/whatsapp/respostas`),
+    staleTime: 60_000,
+  });
+}
+
+export function useEditarRespostas(tenant: string) {
+  const cliente = useQueryClient();
+  const depois = () => void cliente.invalidateQueries({ queryKey: chaves.respostas(tenant) });
+  type Dados = { atalho: string; titulo: string; texto: string; intencao: string | null };
+  const criar = useMutation({
+    mutationFn: (v: Dados) => api<{ id: string }>(`/t/${tenant}/whatsapp/respostas`, { metodo: "POST", corpo: v }),
+    onSuccess: depois,
+  });
+  const mudar = useMutation({
+    mutationFn: ({ id, ...v }: Dados & { id: string }) =>
+      api<void>(`/t/${tenant}/whatsapp/respostas/${id}`, {
+        metodo: "PATCH",
+        corpo: { ...v, intencao: v.intencao ?? undefined, limpar_intencao: v.intencao === null },
+      }),
+    onSuccess: depois,
+  });
+  const remover = useMutation({
+    mutationFn: (id: string) => api<void>(`/t/${tenant}/whatsapp/respostas/${id}`, { metodo: "DELETE" }),
+    onSuccess: depois,
+  });
+  const usar = useMutation({
+    mutationFn: (id: string) => api<void>(`/t/${tenant}/whatsapp/respostas/${id}/uso`, { metodo: "POST" }),
+    onSuccess: depois,
+  });
+  return { criar, mudar, remover, usar };
+}
+
+export function useAutomacao(tenant: string) {
+  return useQuery({
+    queryKey: chaves.automacao(tenant),
+    queryFn: () => api<AutomacaoSalva>(`/t/${tenant}/whatsapp/automacao`),
+  });
+}
+
+export function useSalvarAutomacao(tenant: string) {
+  const cliente = useQueryClient();
+  return useMutation({
+    mutationFn: (v: Automacao) => api<void>(`/t/${tenant}/whatsapp/automacao`, { metodo: "PUT", corpo: v }),
+    onSuccess: () => void cliente.invalidateQueries({ queryKey: chaves.central(tenant) }),
+  });
+}
+
+export function useModelos(tenant: string) {
+  return useQuery({
+    queryKey: chaves.modelos(tenant),
+    queryFn: () => api<ModeloDaCentral[]>(`/t/${tenant}/whatsapp/modelos`),
+  });
+}
+
+export function useEditarModelos(tenant: string) {
+  const cliente = useQueryClient();
+  const depois = () => {
+    void cliente.invalidateQueries({ queryKey: chaves.modelos(tenant) });
+    void cliente.invalidateQueries({ queryKey: chaves.whatsapp(tenant) });
+  };
+  const cadastrar = useMutation({
+    mutationFn: (v: { nome: string; idioma: string; variaveis: VariavelModelo[] }) =>
+      api<void>(`/t/${tenant}/whatsapp/modelos/${v.nome}`, {
+        metodo: "PUT",
+        corpo: { idioma: v.idioma, variaveis: v.variaveis },
+      }),
+    onSuccess: depois,
+  });
+  const remover = useMutation({
+    mutationFn: (nome: string) => api<void>(`/t/${tenant}/whatsapp/modelos/${nome}`, { metodo: "DELETE" }),
+    onSuccess: depois,
+  });
+  return { cadastrar, remover };
+}
+
+export function useMetricasWhatsApp(tenant: string, dias: number) {
+  return useQuery({
+    queryKey: chaves.metricas(tenant, dias),
+    queryFn: () => api<MetricasWhatsApp>(`/t/${tenant}/whatsapp/metricas?dias=${dias}`),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+}
+
+export function useSaudeWhatsApp(tenant: string) {
+  return useQuery({
+    queryKey: chaves.saudeWhatsApp(tenant),
+    queryFn: () => api<SaudeWhatsApp>(`/t/${tenant}/whatsapp/saude`),
+    refetchInterval: 60_000,
+  });
 }

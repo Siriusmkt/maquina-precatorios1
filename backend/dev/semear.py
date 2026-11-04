@@ -25,6 +25,7 @@ from app.dominio.preco import Parametros, PremissaInvalida
 from app.seguranca.cripto import CifraDeCampo, indice_cego
 from app.servicos.avaliacao import avaliar_preco, avaliar_score
 from dev.guarda import exigir_banco_local
+from dev.semear_central import semear_central
 
 HOJE = date.today()  # noqa: DTZ011 - script local de demonstracao
 SORTE = random.Random(42)  # noqa: S311 - dados ficticios, sem uso criptografico
@@ -482,6 +483,8 @@ def main() -> None:  # noqa: PLR0912, PLR0915 - roteiro linear de carga de dados
                    values (%s, %s, %s, %s, %s, now() + make_interval(days => %s))""",
                 [tenant, lead_por_estagio[estagio_alvo], titulo, gestor, operadora, dias],
             )
+        # Central do WhatsApp: conversas com o copiloto, modelos, automacao e historico para as metricas.
+        semear_central(c, tenant, cifra, operadora=operadora, gestor=gestor)
         conn.commit()
     print("Codigo anti-golpe de demonstracao:", codigo)
     print("Base de demonstracao pronta. Usuarios:", ", ".join(USUARIOS_DEMO), "| senha:", SENHA_DEMO)

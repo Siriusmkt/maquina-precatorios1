@@ -32,6 +32,7 @@ FUNCOES_DO_USUARIO = {
     "abrir_cessao",
     "avancar_cessao",
     "documento_do_cedente",
+    "saude_do_webhook",
 }
 
 

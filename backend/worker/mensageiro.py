@@ -9,6 +9,10 @@ Tres filas, cada uma com FOR UPDATE SKIP LOCKED (varios workers nao repetem trab
    ou tarefa para o time) e agenda o proximo.
 3. Envios: aplica as regras antes de mandar (parada, "nao me ligue",
    autorizacao para modelo, janela de 24h para texto livre).
+
+Cada mensagem (entrando ou saindo) atualiza a conversa da Central do WhatsApp;
+a que entra pede ao copiloto uma analise com rascunho, se o cliente ligou a IA.
+A saude do numero e os modelos sao lidos da Meta de tempos em tempos.
 """
 
 from __future__ import annotations
@@ -36,9 +40,11 @@ from app.dominio.whatsapp import (
 from app.seguranca.cripto import CifraDeCampo, FalhaDeCifra
 from worker.config import ConfiguracoesWorker
 from worker.whatsapp import (
+    CAMPOS_DA_SAUDE,
     ClienteWhatsApp,
     ErroWhatsApp,
     Mensagem,
+    ModeloMeta,
     StatusMensagem,
     assinatura_valida,
     interpretar_webhook,
@@ -73,6 +79,7 @@ class Integracao:
     token: str
     segredo_do_app: str
     modelos: dict[str, dict[str, Any]]
+    waba_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -145,6 +152,7 @@ class Mensageiro:
             token=str(segredos.get("token", "")),
             segredo_do_app=str(segredos.get("app_secret", "")),
             modelos={str(m.get("nome")): m for m in config.get("modelos") or [] if isinstance(m, dict)},
+            waba_id=str(config["waba_id"]) if config.get("waba_id") else None,
         )
 
     async def conferir_integracao(self, tenant_id: uuid.UUID) -> dict[str, Any]:
@@ -163,6 +171,90 @@ class Mensageiro:
             return {**relatorio, "acesso": estado, "motivo": exc.motivo}
         campos = ("display_phone_number", "verified_name", "quality_rating", "code_verification_status")
         return {**relatorio, "acesso": "ok", **{c: numero.get(c) for c in campos}}
+
+    async def sincronizar_meta(self) -> int:
+        """Saude do numero e modelos na Meta para cada cliente com WhatsApp ligado. Nao envia nada."""
+        async with self._pool.connection() as conn:
+            cursor = await conn.execute("select tenant_id from app.integracoes where tipo = 'whatsapp' and ativa")
+            tenants = [linha["tenant_id"] for linha in await cursor.fetchall()]
+        lidos = 0
+        for tenant in tenants:
+            async with self._pool.connection() as conn:
+                integracao = await self._integracao(conn, tenant)
+                if integracao is None:
+                    continue
+                saude, modelos = await self._ler_meta(integracao)
+                async with conn.transaction():
+                    if modelos is not None:
+                        await self._gravar_modelos(conn, tenant, modelos)
+                    await conn.execute(
+                        """update app.integracoes set saude = %s, saude_em = now()
+                            where tenant_id = %s and tipo = 'whatsapp'""",
+                        [Jsonb(saude), tenant],
+                    )
+            lidos += 1
+        return lidos
+
+    async def _ler_meta(self, integracao: Integracao) -> tuple[dict[str, Any], list[ModeloMeta] | None]:
+        saude: dict[str, Any] = {}
+        try:
+            try:
+                numero = await self._cliente.conferir_numero(
+                    versao=integracao.versao,
+                    phone_number_id=integracao.phone_number_id,
+                    token=integracao.token,
+                    campos=CAMPOS_DA_SAUDE,
+                )
+            except ErroWhatsApp as exc:
+                if exc.motivo != "meta_100":  # campo que a versao da Graph API nao conhece: so os basicos
+                    raise
+                numero = await self._cliente.conferir_numero(
+                    versao=integracao.versao, phone_number_id=integracao.phone_number_id, token=integracao.token
+                )
+        except ErroWhatsApp as exc:
+            saude["erro"] = "token_recusado" if exc.token_invalido else exc.motivo[:100]
+            return saude, None
+        saude["numero"] = {
+            campo: (
+                str(valor)[:100]
+                if not isinstance(valor, dict)
+                else {k: str(v)[:60] for k, v in list(valor.items())[:5]}
+            )
+            for campo, valor in numero.items()
+            if campo in CAMPOS_DA_SAUDE.split(",") and valor is not None
+        }
+        if not integracao.waba_id:
+            return saude, None
+        try:
+            modelos = await self._cliente.listar_modelos(
+                versao=integracao.versao, waba_id=integracao.waba_id, token=integracao.token
+            )
+        except ErroWhatsApp as exc:
+            saude["erro_modelos"] = exc.motivo[:100]
+            return saude, None
+        contagem: dict[str, int] = {}
+        for m in modelos:
+            contagem[m.status] = contagem.get(m.status, 0) + 1
+        saude["modelos"] = contagem
+        return saude, modelos
+
+    @staticmethod
+    async def _gravar_modelos(conn: Conexao, tenant: uuid.UUID, modelos: list[ModeloMeta]) -> None:
+        chaves = [f"{m.nome}:{m.idioma}" for m in modelos]
+        await conn.execute(
+            "delete from app.whatsapp_modelos where tenant_id = %s and not (nome || ':' || idioma = any(%s))",
+            [tenant, chaves],
+        )
+        for m in modelos:
+            await conn.execute(
+                """insert into app.whatsapp_modelos
+                     (tenant_id, nome, idioma, categoria, status, corpo, variaveis, motivo, sincronizado_em)
+                   values (%s, %s, %s, %s, %s, %s, %s, %s, now())
+                   on conflict (tenant_id, nome, idioma) do update
+                      set categoria = excluded.categoria, status = excluded.status, corpo = excluded.corpo,
+                          variaveis = excluded.variaveis, motivo = excluded.motivo, sincronizado_em = now()""",
+                [tenant, m.nome, m.idioma, m.categoria, m.status, m.corpo, m.variaveis, m.motivo],
+            )
 
     # ------------------------------------------------------------------ 1. recebidas
     async def processar_recebidas(self, resumo: ResumoMensageiro, limite: int = 100) -> None:
@@ -259,7 +351,9 @@ class Mensageiro:
                              order by criado_em desc limit 1)""",
             [tenant, lead["id"]],
         )
-        if pede_para_parar(m.texto):
+        parar = pede_para_parar(m.texto)
+        await self._conversa_entrada(conn, tenant, lead["id"], contato["id"], m.texto, parar=parar)
+        if parar:
             await conn.execute(
                 "update app.contatos set opt_out_em = coalesce(opt_out_em, now()) where id = %s", [contato["id"]]
             )
@@ -273,6 +367,62 @@ class Mensageiro:
         if lead["estagio"] == "em_contato":
             await conn.execute("update app.leads set estagio = 'respondeu' where id = %s", [lead["id"]])
         await self._encerrar_cadencia(conn, tenant, lead, "o credor respondeu")
+
+    async def _conversa_entrada(
+        self, conn: Conexao, tenant: uuid.UUID, lead_id: uuid.UUID, contato_id: uuid.UUID, texto: str, *, parar: bool
+    ) -> None:
+        """Mensagem do credor: a conversa precisa de resposta (ou se encerra, se ele pediu para parar)."""
+        await conn.execute(
+            """insert into app.whatsapp_conversas as c
+                 (tenant_id, lead_id, contato_id, status, nao_lidas, ultima_entrada_em, ultima_em, ultima_mensagem,
+                  ultima_direcao, intencao)
+               values (%(t)s, %(lead)s, %(contato)s, %(status)s, 1, now(), now(), left(%(texto)s, 300), 'entrada',
+                       %(intencao)s)
+               on conflict (tenant_id, lead_id) do update
+                  set contato_id = excluded.contato_id, status = excluded.status,
+                      nao_lidas = least(c.nao_lidas + 1, 10000), ultima_entrada_em = excluded.ultima_entrada_em,
+                      ultima_em = excluded.ultima_em, ultima_mensagem = excluded.ultima_mensagem,
+                      ultima_direcao = 'entrada', followup_tentativas = 0, followup_ultimo_em = null,
+                      rascunho = null, rascunho_em = null, intencao = coalesce(excluded.intencao, c.intencao)""",
+            {
+                "t": tenant,
+                "lead": lead_id,
+                "contato": contato_id,
+                "status": "resolvida" if parar else "precisa_resposta",
+                "texto": texto,
+                "intencao": "pedido_parar" if parar else None,
+            },
+        )
+        if not parar:  # o copiloto le e deixa um rascunho pronto (um pedido pendente por conversa)
+            await conn.execute(
+                """insert into app.ia_pedidos (tenant_id, lead_id, tipo, origem)
+                   select %s, %s, 'rascunho', 'automatico'
+                    where exists (select 1 from app.whatsapp_automacao
+                                   where tenant_id = %s and ia_ativa and analise_automatica)
+                   on conflict do nothing""",
+                [tenant, lead_id, tenant],
+            )
+
+    async def _conversa_saida(self, conn: Conexao, envio: dict[str, Any], texto: str, *, confirmacao: bool) -> None:
+        """Mensagem nossa: a conversa passa a esperar o credor e o rascunho antigo sai de cena."""
+        await conn.execute(
+            """insert into app.whatsapp_conversas as c
+                 (tenant_id, lead_id, contato_id, status, nao_lidas, ultima_saida_em, ultima_em, ultima_mensagem,
+                  ultima_direcao)
+               values (%(t)s, %(lead)s, %(contato)s, %(status)s, 0, now(), now(), left(%(texto)s, 300), 'saida')
+               on conflict (tenant_id, lead_id) do update
+                  set contato_id = excluded.contato_id, status = excluded.status, nao_lidas = 0,
+                      ultima_saida_em = excluded.ultima_saida_em, ultima_em = excluded.ultima_em,
+                      ultima_mensagem = excluded.ultima_mensagem, ultima_direcao = 'saida',
+                      rascunho = null, rascunho_em = null""",
+            {
+                "t": envio["tenant_id"],
+                "lead": envio["lead_id"],
+                "contato": envio["contato_id"],
+                "status": "resolvida" if confirmacao else "aguardando_credor",
+                "texto": texto,
+            },
+        )
 
     async def _encerrar_cadencia(self, conn: Conexao, tenant: uuid.UUID, lead: dict[str, Any], motivo: str) -> None:
         if lead["cadencia_id"] is None or lead["proxima_acao_em"] is None:
@@ -561,6 +711,9 @@ class Mensageiro:
                 """update app.integracoes set erro = null
                     where tenant_id = %s and tipo = 'whatsapp' and erro is not null""",
                 [tenant],
+            )
+            await self._conversa_saida(
+                conn, envio, pronto.registro, confirmacao=bool((envio["conteudo"] or {}).get("confirmacao_saida"))
             )
         resumo.enviadas += 1
 

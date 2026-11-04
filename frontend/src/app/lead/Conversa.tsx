@@ -326,7 +326,17 @@ export function BlocoConversa({ tenant, d }: { tenant: string; d: LeadDetalhe })
         <h2 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
           <MessageCircle className="size-4 text-menta-400" /> Conversa
         </h2>
-        {d.conversa.whatsapp_ligado ? <Selo tom="menta">WhatsApp oficial</Selo> : <Selo>WhatsApp desligado</Selo>}
+        <div className="flex items-center gap-2">
+          {d.conversa.whatsapp_ligado && (
+            <Link
+              to={`/app/whatsapp?aba=conversas&conversa=${d.lead.id}`}
+              className="flex items-center gap-1 rounded-lg border border-violeta-400/25 px-2 py-1 text-[12px] text-violeta-300 hover:bg-violeta-500/10"
+            >
+              <Bot className="size-3.5" /> Abrir com o copiloto
+            </Link>
+          )}
+          {d.conversa.whatsapp_ligado ? <Selo tom="menta">WhatsApp oficial</Selo> : <Selo>WhatsApp desligado</Selo>}
+        </div>
       </div>
 
       <div className="space-y-4">

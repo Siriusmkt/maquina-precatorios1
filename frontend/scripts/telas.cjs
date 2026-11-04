@@ -117,6 +117,27 @@ async function main() {
   await pagina.waitForTimeout(2200);
   await foto("07c-contato", true);
 
+  // Central do WhatsApp: caixa de entrada com copiloto, metricas e saude do numero
+  await pagina.getByRole("link", { name: /^WhatsApp/ }).first().click();
+  await pagina.getByText("Conversas que").waitFor();
+  await pagina.waitForTimeout(1800);
+  const conversas = pagina.locator('[aria-label="Buscar conversas"]');
+  if ((await conversas.count()) < 1) problemas.push("central sem a busca de conversas");
+  const primeira = pagina.locator("button:has(span.truncate)").filter({ hasText: /há|agora/ }).first();
+  if (await primeira.count()) {
+    await primeira.click();
+    await pagina.getByText("Copiloto").first().waitFor();
+    await pagina.waitForTimeout(1500);
+  } else {
+    problemas.push("central sem conversas para abrir");
+  }
+  await foto("07f-whatsapp-conversa");
+  for (const [aba, nome] of [["Métricas", "07g-whatsapp-metricas"], ["Saúde", "07h-whatsapp-saude"]]) {
+    await pagina.getByRole("button", { name: aba }).first().click();
+    await pagina.waitForTimeout(2200);
+    await foto(nome, true);
+  }
+
   // 5. Paleta de comandos: acha o credor pelo comeco do sobrenome
   await pagina.keyboard.press("Control+k");
   const termo = nomeCredor.split(" ")[1]?.slice(0, 4) ?? nomeCredor.slice(0, 4);
