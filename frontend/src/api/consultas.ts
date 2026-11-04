@@ -25,7 +25,9 @@ import type {
   PainelResolver,
   PassoCadencia,
   ResultadoImportacao,
+  ResumoCessao,
   ResumoRadar,
+  Sala,
   Tarefa,
   VerificacaoPublica,
 } from "./tipos";
@@ -43,6 +45,8 @@ export const chaves = {
   cadencias: (t: string) => ["cadencias", t] as const,
   tarefas: (t: string) => ["tarefas", t] as const,
   resolver: (t: string) => ["resolver", t] as const,
+  cessoes: (t: string) => ["cessoes", t] as const,
+  sala: (t: string, id: string) => ["sala", t, id] as const,
   bureau: (t: string) => ["bureau", t] as const,
 };
 
@@ -404,6 +408,49 @@ export function useBuscaNoBureau(tenant: string, lead: string) {
 
 export function importarLote(tenant: string, linhas: LinhaImportada[]): Promise<ResultadoImportacao> {
   return api<ResultadoImportacao>(`/t/${tenant}/resolver/importacao`, { metodo: "POST", corpo: { linhas } });
+}
+
+// ------------------------------------------------------------------ fechamento
+export function useCessoes(tenant: string) {
+  return useQuery({ queryKey: chaves.cessoes(tenant), queryFn: () => api<ResumoCessao[]>(`/t/${tenant}/cessoes`) });
+}
+
+export function useSala(tenant: string, id: string) {
+  return useQuery({ queryKey: chaves.sala(tenant, id), queryFn: () => api<Sala>(`/t/${tenant}/cessoes/${id}`) });
+}
+
+export function useAbrirSala(tenant: string, lead: string) {
+  const invalidar = useInvalidar(tenant);
+  return useMutation({
+    mutationFn: (v: { valor: string; proposta_id?: string }) =>
+      api<{ id: string }>(`/t/${tenant}/leads/${lead}/cessao`, { metodo: "POST", corpo: v }),
+    onSuccess: () => invalidar(chaves.lead(tenant, lead), chaves.cessoes(tenant)),
+  });
+}
+
+/** Tudo que muda a sala recarrega a sala, a lista e o lead (o funil acompanha as etapas). */
+export function useEditarSala(tenant: string, sala: string, lead: string) {
+  const invalidar = useInvalidar(tenant);
+  const depois = () => invalidar(chaves.sala(tenant, sala), chaves.cessoes(tenant), chaves.lead(tenant, lead));
+  const mudar = useMutation({
+    mutationFn: (v: Record<string, string | null>) => api<void>(`/t/${tenant}/cessoes/${sala}`, { metodo: "PATCH", corpo: v }),
+    onSuccess: depois,
+  });
+  const avancar = useMutation({
+    mutationFn: (v: { para: string; motivo?: string }) =>
+      api<void>(`/t/${tenant}/cessoes/${sala}/etapa`, { metodo: "POST", corpo: v }),
+    onSuccess: depois,
+  });
+  const revisar = useMutation({
+    mutationFn: (v: { id: string; status: "aprovado" | "rejeitado"; motivo?: string }) =>
+      api<void>(`/t/${tenant}/documentos/${v.id}`, { metodo: "PATCH", corpo: { status: v.status, motivo: v.motivo } }),
+    onSuccess: depois,
+  });
+  const apagar = useMutation({
+    mutationFn: (id: string) => api<void>(`/t/${tenant}/documentos/${id}`, { metodo: "DELETE" }),
+    onSuccess: depois,
+  });
+  return { mudar, avancar, revisar, apagar, recarregar: depois };
 }
 
 // ------------------------------------------------------------------ senha (paginas publicas)

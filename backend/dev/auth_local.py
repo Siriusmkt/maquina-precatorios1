@@ -11,10 +11,12 @@ Uso: uv run uvicorn dev.auth_local:app --host 127.0.0.1 --port 9999
 
 from __future__ import annotations
 
+import asyncio
 import os
 import secrets
 import time
 import uuid
+from pathlib import Path
 
 import jwt
 import psycopg
@@ -143,3 +145,63 @@ async def trocar_senha(request: Request) -> Response:
         return JSONResponse({"error": "token"}, status_code=401)
     _senhas[str(claims["email"]).lower()] = str((await request.json()).get("password", ""))
     return JSONResponse({"id": claims["sub"]})
+
+
+# --------------------------------------------------------------------- Storage de mentira
+# Guarda os arquivos (ja cifrados pela API) numa pasta temporaria local, com a mesma
+# exigencia de chave de servico do Supabase Storage.
+_PASTA_STORAGE = Path(os.environ.get("TMPDIR", "/tmp")) / "maquina-storage-dev"  # noqa: S108 - so desenvolvimento
+
+
+def _caminho_local(balde: str, caminho: str) -> Path | None:
+    raiz = _PASTA_STORAGE.resolve()
+    destino = (raiz / balde / caminho).resolve()
+    return destino if destino.is_relative_to(raiz) and destino != raiz else None
+
+
+def _servico(request: Request) -> bool:
+    return bool(CHAVE_SERVICO) and request.headers.get("authorization") == f"Bearer {CHAVE_SERVICO}"
+
+
+def _gravar(destino: Path, dados: bytes) -> bool:
+    if destino.exists():
+        return False
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_bytes(dados)
+    return True
+
+
+def _ler(destino: Path) -> bytes | None:
+    return destino.read_bytes() if destino.exists() else None
+
+
+@app.post("/storage/v1/object/{balde}/{caminho:path}")
+async def guardar_arquivo(balde: str, caminho: str, request: Request) -> Response:
+    destino = _caminho_local(balde, caminho)
+    if not _servico(request) or destino is None:
+        return JSONResponse({"error": "nao_autorizado"}, status_code=403)
+    if not await asyncio.to_thread(_gravar, destino, await request.body()):
+        return JSONResponse({"error": "Duplicate"}, status_code=409)
+    return JSONResponse({"Key": f"{balde}/{caminho}"})
+
+
+@app.get("/storage/v1/object/{balde}/{caminho:path}")
+async def ler_arquivo(balde: str, caminho: str, request: Request) -> Response:
+    destino = _caminho_local(balde, caminho)
+    if not _servico(request) or destino is None:
+        return JSONResponse({"error": "nao_autorizado"}, status_code=403)
+    dados = await asyncio.to_thread(_ler, destino)
+    if dados is None:
+        return JSONResponse({"error": "not_found"}, status_code=404)
+    return Response(dados, media_type="application/octet-stream")
+
+
+@app.delete("/storage/v1/object/{balde}")
+async def apagar_arquivos(balde: str, request: Request) -> Response:
+    if not _servico(request):
+        return JSONResponse({"error": "nao_autorizado"}, status_code=403)
+    for caminho in (await request.json()).get("prefixes", []):
+        destino = _caminho_local(balde, str(caminho))
+        if destino is not None:
+            await asyncio.to_thread(destino.unlink, missing_ok=True)
+    return JSONResponse([])

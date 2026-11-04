@@ -22,6 +22,7 @@ from app.documentos.estilo import (
     FUNDO,
     MENTA,
     OURO,
+    cnpj_formatado,
     data_br,
     dinheiro,
     marca_dagua,
@@ -77,12 +78,6 @@ def _data(premissas: dict[str, Any], chave: str) -> date | None:
         return date.fromisoformat(str(bruto)) if bruto else None
     except ValueError:
         return None
-
-
-def _cnpj(valor: str | None) -> str:
-    if not valor or len(valor) != 14:
-        return valor or ""
-    return f"{valor[:2]}.{valor[2:5]}.{valor[5:8]}/{valor[8:12]}-{valor[12:]}"
 
 
 def _linhas(pares: list[tuple[str, str]]) -> Table:
@@ -255,7 +250,7 @@ def gerar_pdf(d: DadosProposta) -> bytes:
         rodape(canvas, largura, texto_rodape, documento.page)
 
     p = d.premissas
-    cnpj = f" · CNPJ {_cnpj(d.comprador_cnpj)}" if d.comprador_cnpj else ""
+    cnpj = f" · CNPJ {cnpj_formatado(d.comprador_cnpj)}" if d.comprador_cnpj else ""
     historia: list[Any] = [
         Paragraph(texto(d.comprador) + texto(cnpj), ESTILOS["sobre"]),
         Spacer(1, 6),

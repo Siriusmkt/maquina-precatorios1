@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -9,6 +10,7 @@ import httpx
 from fastapi import FastAPI
 from redis.asyncio import Redis
 
+from app.armazenamento import ArmazenamentoSupabase
 from app.auth import rotas as rotas_auth
 from app.auth.gotrue import ClienteAuth
 from app.banco.sessao import Banco, criar_pool
@@ -16,13 +18,15 @@ from app.config import Configuracoes
 from app.erros import registrar_tratadores
 from app.logs import configurar_logs
 from app.recursos import Recursos, nomes_cookie
-from app.rotas import basicas, contato, documentos, equipe, espaco, publico, resolver
+from app.rotas import basicas, contato, documentos, equipe, espaco, fechamento, publico, resolver
 from app.seguranca.cripto import CifraDeCampo
 from app.seguranca.http import ProtecaoCsrf, SegurancaHttp
 from app.seguranca.jwt import VerificadorJwt
 from app.seguranca.limite import Limitador
 
 ROTAS_COM_ASSINATURA_PROPRIA = ("/api/webhooks/",)
+# Unica rota com corpo grande: envio de documento da sala de cessao (o nginx tem a mesma regra).
+ROTA_DE_UPLOAD = re.compile(r"/api/t/[0-9a-f-]{36}/cessoes/[0-9a-f-]{36}/documentos")
 
 
 def criar_app(
@@ -70,6 +74,16 @@ def criar_app(
             ),
             cifra=CifraDeCampo(config.chaves_cifra_bytes, config.chave_cifra_ativa),
             cookies=cookies,
+            armazenamento=(
+                ArmazenamentoSupabase(
+                    http,
+                    config.supabase_url,
+                    config.supabase_service_role_key.get_secret_value(),
+                    config.storage_bucket,
+                )
+                if config.supabase_service_role_key
+                else None
+            ),
         )
         try:
             yield
@@ -95,6 +109,7 @@ def criar_app(
     app.include_router(contato.router)
     app.include_router(contato.webhooks)
     app.include_router(resolver.router)
+    app.include_router(fechamento.router)
     app.include_router(publico.router)
 
     # Ordem: o ultimo adicionado e o mais externo.
@@ -109,5 +124,6 @@ def criar_app(
         producao=config.producao,
         proxies_confiaveis=config.proxies_confiaveis,
         corpo_max_bytes=config.corpo_max_bytes,
+        corpos_grandes=((ROTA_DE_UPLOAD, config.arquivo_max_bytes),),
     )
     return app

@@ -232,6 +232,7 @@ export interface LeadDetalhe {
   contatos: ContatoDoLead[];
   conversa: Conversa;
   resolver: ResolverDoLead;
+  cessao: { id: string; status: StatusCessao; valor_pago: string; escritura_em: string | null } | null;
   transicoes: Estagio[];
   papel: Papel;
 }
@@ -436,4 +437,79 @@ export interface ResultadoImportacao {
   repetidos: number;
   invalidos: number;
   leads_enriquecidos: number;
+}
+
+export type StatusCessao = "preparando" | "escritura_agendada" | "escritura_assinada" | "protocolada" | "homologada" | "paga" | "cancelada";
+export type EtapaCessao = Exclude<StatusCessao, "preparando">;
+
+export interface ResumoCessao {
+  id: string;
+  lead_id: string;
+  credor: string | null;
+  status: StatusCessao;
+  valor_pago: string;
+  cartorio: string | null;
+  escritura_em: string | null;
+  tribunal: string | null;
+  obrigatorios: number;
+  aprovados: number;
+  atualizado_em: string;
+}
+
+export interface DocumentoDaSala {
+  id: string;
+  tipo: string;
+  descricao: string | null;
+  nome_arquivo: string;
+  mime: string;
+  tamanho: number;
+  status: "enviado" | "aprovado" | "rejeitado";
+  motivo: string | null;
+  enviado_por: string | null;
+  enviado_em: string | null;
+  revisado_por: string | null;
+  revisado_em: string | null;
+  meu: boolean;
+}
+
+export interface ItemDaSala {
+  tipo: string;
+  rotulo: string;
+  ajuda: string;
+  obrigatorio: boolean;
+  varios: boolean;
+  situacao: "faltando" | "em_revisao" | "aprovado" | "recusado";
+  documentos: DocumentoDaSala[];
+}
+
+export interface Sala {
+  id: string;
+  lead_id: string;
+  status: StatusCessao;
+  valor_pago: string;
+  credor: string | null;
+  espolio: boolean;
+  pessoa_juridica: boolean;
+  processo: string | null;
+  tribunal: string | null;
+  ente: string | null;
+  esfera: string | null;
+  numero_requisicao: string | null;
+  cartorio: string | null;
+  escritura_em: string | null;
+  link_enotariado: string | null;
+  livro_folha: string | null;
+  protocolo_tribunal: string | null;
+  comunicado_ente_em: string | null;
+  comunicado_agu_em: string | null;
+  observacoes: string | null;
+  motivo_cancelamento: string | null;
+  assinada_em: string | null;
+  itens: ItemDaSala[];
+  pendencias: string[];
+  proximas: EtapaCessao[];
+  pode_revisar: boolean;
+  pode_editar: boolean;
+  pode_enviar: boolean;
+  armazenamento: boolean;
 }

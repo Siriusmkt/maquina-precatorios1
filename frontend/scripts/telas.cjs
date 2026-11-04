@@ -105,6 +105,12 @@ async function main() {
   await pagina.waitForTimeout(2000);
   await foto("07d-resolver", true);
 
+  // Fechamento: salas de cessao por etapa
+  await pagina.getByRole("link", { name: "Fechamento" }).first().click();
+  await pagina.getByText("sem papel perdido.").waitFor();
+  await pagina.waitForTimeout(1800);
+  await foto("07e-fechamento");
+
   // Contato: cadencias e WhatsApp oficial
   await pagina.getByRole("link", { name: "Contato" }).first().click();
   await pagina.getByText("Regras que a máquina nunca quebra").waitFor();

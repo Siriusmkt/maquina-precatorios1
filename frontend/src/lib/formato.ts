@@ -162,3 +162,11 @@ export function mascaraCpf(valor: string): string {
   if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
   return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
 }
+
+/** "90.000,50" ou "90000.50" -> "90000.50" (decimal da API); null se nao for um valor. */
+export function decimalDeTexto(texto: string): string | null {
+  const limpo = texto.replace(/[R$\s]/g, "");
+  const normal = limpo.includes(",") ? limpo.replace(/\./g, "").replace(",", ".") : limpo;
+  if (!/^\d{1,13}(\.\d{1,2})?$/.test(normal)) return null;
+  return Number(normal) > 0 ? normal : null;
+}

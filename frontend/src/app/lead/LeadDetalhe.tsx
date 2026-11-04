@@ -14,6 +14,7 @@ import { CINEMA, subir } from "@/lib/movimento";
 import { useApp } from "../contexto";
 import { BlocoContatos, BlocoPessoas, BlocoPropostas, BlocoScore, BlocoVerificacao, LinhaDoTempo } from "./Blocos";
 import { BlocoConversa } from "./Conversa";
+import { BlocoSalaDeCessao } from "./SalaDoLead";
 import { PrecoJusto } from "./PrecoJusto";
 
 function Trilha({ atual, transicoes, aoMover, movendo }: { atual: Estagio; transicoes: Estagio[]; aoMover: (e: Estagio) => void; movendo: boolean }) {
@@ -168,6 +169,7 @@ export default function LeadDetalhe() {
           <BlocoScore d={d} />
           <BlocoVerificacao tenant={tenant.id} d={d} />
           <BlocoContatos tenant={tenant.id} d={d} />
+          <BlocoSalaDeCessao tenant={tenant.id} d={d} />
           <BlocoPropostas tenant={tenant.id} d={d} />
           <BlocoPessoas d={d} />
         </motion.div>

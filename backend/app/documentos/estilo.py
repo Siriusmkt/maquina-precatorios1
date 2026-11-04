@@ -98,3 +98,15 @@ def marca_dagua(canvas: Canvas, largura: float, altura: float, frase: str) -> No
     canvas.rotate(33)
     canvas.drawCentredString(0, 0, frase)
     canvas.restoreState()
+
+
+def cnpj_formatado(valor: str | None) -> str:
+    if not valor or len(valor) != 14:
+        return valor or ""
+    return f"{valor[:2]}.{valor[2:5]}.{valor[5:8]}/{valor[8:12]}-{valor[12:]}"
+
+
+def cpf_formatado(valor: str | None) -> str:
+    if not valor or len(valor) != 11:
+        return valor or ""
+    return f"{valor[:3]}.{valor[3:6]}.{valor[6:9]}-{valor[9:]}"

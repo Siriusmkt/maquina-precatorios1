@@ -13,7 +13,7 @@ from functools import cached_property
 from ipaddress import IPv4Network, IPv6Network, ip_network
 from typing import Annotated, Literal
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, StringConstraints, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 Rede = IPv4Network | IPv6Network
@@ -68,6 +68,10 @@ class Configuracoes(BaseSettings):
 
     # Limites
     corpo_max_bytes: int = 64 * 1024
+    # Documentos da sala de cessao (unica rota com corpo grande; o nginx tem a mesma regra).
+    arquivo_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1024, le=10 * 1024 * 1024)
+    # Bucket privado do Supabase Storage onde ficam os documentos (sempre cifrados antes de subir).
+    storage_bucket: Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9-]{2,62}$")] = "cessoes"
 
     # Criptografia de campos (AES-256-GCM) com rotacao: {"1": "<base64 32 bytes>", ...}
     chaves_cifra: dict[int, SecretStr]

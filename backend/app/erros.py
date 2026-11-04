@@ -73,6 +73,21 @@ MENSAGENS: dict[str, str] = {
     "credor_sem_cpf": "O credor não tem CPF no processo. Informe o CPF para buscar os contatos.",
     "enriquecimento_em_andamento": "Já existe uma busca em andamento para este credor.",
     "cpf_invalido": "CPF inválido. Confira os números.",
+    # Fechamento
+    "lead_fora_da_negociacao": "Abra a sala de cessão quando o lead estiver em negociação.",
+    "proposta_nao_aceita": "Essa proposta não foi aceita pelo credor.",
+    "cessao_ja_aberta": "Este lead já tem uma sala de cessão aberta.",
+    "cessao_nao_encontrada": "Sala de cessão não encontrada.",
+    "cessao_nao_cancelavel": "Depois da assinatura, a cessão não pode ser cancelada.",
+    "etapa_fora_de_ordem": "Essa etapa não vem agora. Siga a ordem da sala.",
+    "agenda_incompleta": "Informe o cartório e a data da escritura antes de agendar.",
+    "comunicacao_incompleta": "Registre o protocolo no tribunal e a comunicação ao ente devedor antes de avançar.",
+    "documentos_pendentes": "Ainda há documentos obrigatórios sem aprovação.",
+    "documento_nao_encontrado": "Documento não encontrado.",
+    "arquivo_nao_aceito": "Envie PDF, JPEG ou PNG.",
+    "arquivo_ilegivel": "Não foi possível abrir este arquivo. Envie de novo.",
+    "armazenamento_indisponivel": "O armazenamento de documentos não está disponível agora.",
+    "sala_fechada": "Esta sala de cessão não recebe mais documentos.",
     "contato_ilegivel": "Não foi possível ler este contato. Cadastre de novo.",
 }
 

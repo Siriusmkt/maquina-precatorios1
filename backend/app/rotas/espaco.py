@@ -115,6 +115,7 @@ class LeadDetalhe(BaseModel):
     contatos: list[q_leads.ContatoLead]
     conversa: q_leads.Conversa
     resolver: q_leads.ResolverDoLead
+    cessao: q_leads.CessaoDoLead | None
     transicoes: list[str]
     papel: str
 
@@ -181,6 +182,7 @@ async def detalhe_lead(
             contatos=await q_leads.contatos(conn, tenant_id, lead["credor_parte_id"]),
             conversa=await q_leads.conversa(conn, tenant_id, lead_id),
             resolver=await q_leads.resolver(conn, tenant_id, lead_id),
+            cessao=await q_leads.cessao(conn, tenant_id, lead_id),
             transicoes=list(transicoes_permitidas(lead["estagio"], tenant.papel)),
             papel=tenant.papel,
         )

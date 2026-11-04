@@ -4,6 +4,7 @@ import {
   ChevronsLeft,
   Command,
   ExternalLink,
+  Handshake,
   KanbanSquare,
   LayoutDashboard,
   LogOut,
@@ -32,6 +33,7 @@ const NAVEGACAO = [
   { para: "/app/leads", rotulo: "Funil", icone: KanbanSquare, fim: false },
   { para: "/app/resolver", rotulo: "Resolver", icone: ScanSearch, fim: false },
   { para: "/app/contato", rotulo: "Contato", icone: MessageCircle, fim: false },
+  { para: "/app/fechamento", rotulo: "Fechamento", icone: Handshake, fim: false },
   { para: "/app/equipe", rotulo: "Equipe", icone: Users, fim: false },
 ];
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import re
 import secrets
 import time
 from collections.abc import Iterable, Sequence
@@ -119,11 +120,20 @@ class SegurancaHttp:
         producao: bool,
         proxies_confiaveis: Sequence[Rede],
         corpo_max_bytes: int,
+        corpos_grandes: Sequence[tuple[re.Pattern[str], int]] = (),
     ) -> None:
         self.app = app
         self.cabecalhos = cabecalhos_de_seguranca(producao)
         self.proxies = proxies_confiaveis
         self.corpo_max = corpo_max_bytes
+        # Excecoes por rota (upload de documentos): o resto continua no limite pequeno.
+        self.corpos_grandes = tuple(corpos_grandes)
+
+    def _limite(self, caminho: str) -> int:
+        for padrao, limite in self.corpos_grandes:
+            if padrao.fullmatch(caminho):
+                return limite
+        return self.corpo_max
 
     def _ip(self, scope: Scope, cabecalhos: dict[bytes, bytes]) -> str:
         cliente = scope.get("client")
@@ -133,9 +143,10 @@ class SegurancaHttp:
             self.proxies,
         )
 
-    def _declarado_excede(self, cabecalhos: dict[bytes, bytes]) -> bool:
+    @staticmethod
+    def _declarado_excede(cabecalhos: dict[bytes, bytes], limite: int) -> bool:
         declarado = cabecalhos.get(b"content-length")
-        return declarado is not None and (not declarado.isdigit() or int(declarado) > self.corpo_max)
+        return declarado is not None and (not declarado.isdigit() or int(declarado) > limite)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] != "http":
@@ -147,10 +158,11 @@ class SegurancaHttp:
         cabecalhos = dict(scope["headers"])
         ip = self._ip(scope, cabecalhos)
         scope.setdefault("state", {}).update(request_id=request_id, ip=ip)
-        req = _Requisicao(receive, send, self.cabecalhos, self.corpo_max, request_id)
+        limite = self._limite(scope["path"])
+        req = _Requisicao(receive, send, self.cabecalhos, limite, request_id)
         inicio = time.perf_counter()
         try:
-            if self._declarado_excede(cabecalhos):
+            if self._declarado_excede(cabecalhos, limite):
                 await req.recusar_corpo()
                 return
             try:

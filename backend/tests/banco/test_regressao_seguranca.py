@@ -29,6 +29,9 @@ FUNCOES_DO_USUARIO = {
     "atualizar_config_integracao",
     "documentos_para_bureau",
     "leads_por_documento",
+    "abrir_cessao",
+    "avancar_cessao",
+    "documento_do_cedente",
 }
 
 

@@ -162,7 +162,24 @@ select tenant_id, count(*) from app.enriquecimentos
  group by 1;
 ```
 
-## 7. Checklist depois do deploy
+## 7. Fechamento (sala de cessão)
+
+1. **Bucket privado no Supabase Storage.** No Studio: *Storage → New bucket*, nome `cessoes` (ou o que estiver em `MAQUINA_STORAGE_BUCKET`), **Public desligado**. Não crie policies para o bucket: só a API acessa, com a chave de serviço (`MAQUINA_SUPABASE_SERVICE_ROLE_KEY`). Sem essa chave, a sala abre normalmente mas o envio de documentos fica desligado (a tela avisa).
+2. **Cada arquivo é cifrado na API antes de subir** (AES-256-GCM, contexto do cliente e do documento) e o caminho é gerado pelo servidor; nem quem administra o Storage lê o conteúdo. O tipo é conferido pelo conteúdo (PDF, JPEG ou PNG), até 10 MB, e o upload grande só é aceito nessa rota (API e nginx).
+3. **Papéis.** Abrir a sala, revisar documentos, preencher cartório e comunicação e gerar a minuta: dono, gestor ou jurídico. Enviar documentos: também o operador. Dar como paga e cancelar: dono ou gestor.
+4. **e-Notariado.** O ato é criado pelo cartório na plataforma (não há API aberta para empresas). Na sala ficam o cartório, a data da videoconferência, o link do ato, livro e folha. Cada parte precisa do certificado digital notarizado (gratuito, emitido por videoconferência com um cartório).
+5. **Minuta.** "Minuta da escritura" gera um rascunho em PDF (marca d'água MINUTA) com as cláusulas usuais da cessão de precatório, para o tabelião e o jurídico revisarem. Leva o CPF completo do cedente, então cada geração entra na auditoria.
+6. **Depois da assinatura**, registre o protocolo da petição no tribunal e a data da comunicação ao ente devedor (CF, art. 100, § 14): só então a sala avança para "Comunicada".
+
+```sql
+-- salas por etapa
+select status, count(*), sum(valor_pago) from app.cessoes group by 1 order by 1;
+-- downloads de documentos e minutas (auditoria)
+select acao, count(*), max(criado_em) from app.auditoria
+ where acao in ('documentos.exportado', 'cessoes.exportado') group by 1;
+```
+
+## 8. Checklist depois do deploy
 
 ```bash
 # cabeçalhos de segurança e CSP

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from fastapi import Request
 from redis.asyncio import Redis
 
+from app.armazenamento import Armazenamento
 from app.auth.gotrue import ClienteAuth
 from app.banco.sessao import Banco, ContextoRequisicao
 from app.config import Configuracoes
@@ -40,6 +41,7 @@ class Recursos:
     auth: ClienteAuth
     cifra: CifraDeCampo
     cookies: NomesCookie
+    armazenamento: Armazenamento | None = None  # sem chave de servico: documentos desligados
 
 
 def recursos(request: Request) -> Recursos:

@@ -309,6 +309,23 @@ async def resolver(conn: Conexao, tenant_id: uuid.UUID, lead_id: uuid.UUID) -> R
     )
 
 
+class CessaoDoLead(BaseModel):
+    id: uuid.UUID
+    status: str
+    valor_pago: Decimal
+    escritura_em: datetime | None
+
+
+async def cessao(conn: Conexao, tenant_id: uuid.UUID, lead_id: uuid.UUID) -> CessaoDoLead | None:
+    cursor = await conn.execute(
+        """select id, status::text as status, valor_pago, escritura_em from app.cessoes
+            where tenant_id = %s and lead_id = %s""",
+        [tenant_id, lead_id],
+    )
+    linha = await cursor.fetchone()
+    return CessaoDoLead.model_validate(linha) if linha else None
+
+
 class Painel(BaseModel):
     funil: list[dict[str, Any]]
     leads_7_dias: int

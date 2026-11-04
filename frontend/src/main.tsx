@@ -21,6 +21,8 @@ const LeadDetalhe = lazyProtegido(() => import("@/app/lead/LeadDetalhe"));
 const Equipe = lazyProtegido(() => import("@/app/equipe/Equipe"));
 const Contato = lazyProtegido(() => import("@/app/contato/Contato"));
 const Resolver = lazyProtegido(() => import("@/app/resolver/Resolver"));
+const Fechamento = lazyProtegido(() => import("@/app/fechamento/Fechamento"));
+const Sala = lazyProtegido(() => import("@/app/fechamento/Sala"));
 
 const clienteDeConsultas = new QueryClient({
   defaultOptions: {
@@ -87,6 +89,8 @@ const rotas = createBrowserRouter([
       { path: "leads/:leadId", element: <LeadDetalhe /> },
       { path: "resolver", element: <Resolver /> },
       { path: "contato", element: <Contato /> },
+      { path: "fechamento", element: <Fechamento /> },
+      { path: "fechamento/:salaId", element: <Sala /> },
       { path: "equipe", element: <Equipe /> },
     ],
   },

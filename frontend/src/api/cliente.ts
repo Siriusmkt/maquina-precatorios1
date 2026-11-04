@@ -148,3 +148,37 @@ export async function baixar(caminho: string, metodo: "GET" | "POST" = "GET", co
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
+
+/**
+ * Envia um arquivo (corpo binario) com o CSRF e progresso de envio. Usa XHR
+ * porque o fetch nao informa o progresso do upload. Renova a sessao uma vez.
+ */
+export async function enviarArquivo<T>(caminho: string, arquivo: Blob, aoProgredir?: (fracao: number) => void): Promise<T> {
+  const tentar = async () => {
+    const token = await obterCsrf();
+    return new Promise<{ status: number; texto: string }>((resolver, rejeitar) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `/api${caminho}`);
+      xhr.withCredentials = true;
+      xhr.setRequestHeader("x-csrf-token", token);
+      xhr.setRequestHeader("accept", "application/json");
+      xhr.setRequestHeader("content-type", arquivo.type || "application/octet-stream");
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) aoProgredir?.(e.loaded / e.total);
+      };
+      xhr.onload = () => resolver({ status: xhr.status, texto: xhr.responseText });
+      xhr.onerror = () => rejeitar(new ErroApi(0, "rede", "A conexão caiu durante o envio."));
+      xhr.send(arquivo);
+    });
+  };
+  let r = await tentar();
+  if (r.status === 403 && r.texto.includes("csrf_invalido")) {
+    esquecerCsrf();
+    r = await tentar();
+  }
+  if (r.status === 401 && (await renovarSessao())) r = await tentar();
+  if (r.status < 200 || r.status >= 300) {
+    throw await erroDe(new Response(r.texto || null, { status: r.status, headers: { "content-type": "application/json" } }));
+  }
+  return (r.texto ? JSON.parse(r.texto) : undefined) as T;
+}

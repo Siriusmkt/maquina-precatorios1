@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cnpj, dataCurta, formatarCodigo, mascaraCpf, percentual, reais, reaisCompactoPreciso, sorteioEstavel } from "./formato";
+import { cnpj, dataCurta, decimalDeTexto, formatarCodigo, mascaraCpf, percentual, reais, reaisCompactoPreciso, sorteioEstavel } from "./formato";
 
 const semNbsp = (texto: string) => texto.replace(/ /g, " ");
 
@@ -47,5 +47,13 @@ describe("formato", () => {
     expect(mascaraCpf("1234")).toBe("123.4");
     expect(mascaraCpf("1234567")).toBe("123.456.7");
     expect(mascaraCpf("123.456.789-0912")).toBe("123.456.789-09");
+  });
+
+  it("le valor digitado em reais", () => {
+    expect(decimalDeTexto("90.000,50")).toBe("90000.50");
+    expect(decimalDeTexto("R$ 1.234,5")).toBe("1234.5");
+    expect(decimalDeTexto("90000.5")).toBe("90000.5");
+    expect(decimalDeTexto("0")).toBeNull();
+    expect(decimalDeTexto("abc")).toBeNull();
   });
 });

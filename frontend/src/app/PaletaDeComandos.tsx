@@ -1,5 +1,5 @@
 /** Paleta ⌘K: navegar e achar credores sem tirar a mao do teclado. */
-import { CornerDownLeft, KanbanSquare, LayoutDashboard, MessageCircle, Radar, ScanSearch, Search, UserRound, Users } from "lucide-react";
+import { CornerDownLeft, Handshake, KanbanSquare, LayoutDashboard, MessageCircle, Radar, ScanSearch, Search, UserRound, Users } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
@@ -35,6 +35,7 @@ export function PaletaDeComandos({ aberta, aoFechar }: { aberta: boolean; aoFech
       { id: "radar", rotulo: "Abrir o Radar", icone: <Radar className="size-4" />, ir: "/app/radar" },
       { id: "funil", rotulo: "Ver o Funil", icone: <KanbanSquare className="size-4" />, ir: "/app/leads" },
       { id: "resolver", rotulo: "Achar contatos do credor", icone: <ScanSearch className="size-4" />, ir: "/app/resolver" },
+      { id: "fechamento", rotulo: "Salas de cessão", icone: <Handshake className="size-4" />, ir: "/app/fechamento" },
       { id: "contato", rotulo: "Cadências e WhatsApp", icone: <MessageCircle className="size-4" />, ir: "/app/contato" },
       { id: "equipe", rotulo: "Equipe e preferências", icone: <Users className="size-4" />, ir: "/app/equipe" },
     ];

@@ -83,6 +83,8 @@ class GoTrueFalso:
     criar_conta: Callable[[str], uuid.UUID] | None = None
     convites: list[tuple[str, str | None]] = field(default_factory=list)
     recuperacoes: list[tuple[str, str | None]] = field(default_factory=list)
+    # Storage falso (bucket -> caminho -> bytes), com a mesma exigencia de chave de servico.
+    arquivos: dict[str, dict[str, bytes]] = field(default_factory=dict)
 
     def cadastrar(self, usuario: uuid.UUID, email: str, senha: str) -> None:
         self.usuarios[email] = (usuario, senha)
@@ -141,6 +143,26 @@ class GoTrueFalso:
                 return httpx.Response(200, json={"id": str(usuario)})
         return httpx.Response(404)
 
+    def _storage(self, requisicao: httpx.Request) -> httpx.Response:
+        servico = requisicao.headers.get("authorization") == f"Bearer {CHAVE_SERVICO}"
+        if requisicao.headers.get("apikey") != CHAVE_SERVICO or not servico:
+            return httpx.Response(403, json={"error": "nao_autorizado"})
+        partes = requisicao.url.path.removeprefix("/storage/v1/object/").split("/", 1)
+        balde = self.arquivos.setdefault(partes[0], {})
+        if requisicao.method == "POST" and len(partes) == 2:
+            if partes[1] in balde and requisicao.headers.get("x-upsert") != "true":
+                return httpx.Response(409, json={"error": "Duplicate"})
+            balde[partes[1]] = requisicao.content
+            return httpx.Response(200, json={"Key": f"{partes[0]}/{partes[1]}"})
+        if requisicao.method == "GET" and len(partes) == 2:
+            conteudo = balde.get(partes[1])
+            return httpx.Response(200, content=conteudo) if conteudo is not None else httpx.Response(404)
+        if requisicao.method == "DELETE" and len(partes) == 1:
+            for prefixo in json.loads(requisicao.content)["prefixes"]:
+                balde.pop(prefixo, None)
+            return httpx.Response(200, json=[])
+        return httpx.Response(400)
+
     def __call__(self, requisicao: httpx.Request) -> httpx.Response:
         caminho = requisicao.url.path
         self.chamadas.append(caminho)
@@ -148,6 +170,8 @@ class GoTrueFalso:
             raise httpx.ConnectError("auth fora do ar", request=requisicao)
         if self.status_forcado:
             return httpx.Response(self.status_forcado, json={"error": "forcado"})
+        if caminho.startswith("/storage/v1/object/"):
+            return self._storage(requisicao)
         if caminho == "/auth/v1/invite":
             return self._convite(requisicao)
         if requisicao.headers.get("apikey") != "chave-anon-de-teste":
