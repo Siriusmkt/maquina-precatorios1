@@ -20,10 +20,12 @@ from decimal import Decimal
 import psycopg
 
 from app.config import Configuracoes
+from app.dominio.contatos import CONTEXTO_DOCUMENTO_DO_PROCESSO
 from app.dominio.preco import Parametros, PremissaInvalida
 from app.seguranca.cripto import CifraDeCampo, indice_cego
 from app.servicos.avaliacao import avaliar_preco, avaliar_score
 from dev.guarda import exigir_banco_local
+from dev.semear_central import semear_central
 
 HOJE = date.today()  # noqa: DTZ011 - script local de demonstracao
 SORTE = random.Random(42)  # noqa: S311 - dados ficticios, sem uso criptografico
@@ -101,6 +103,23 @@ def _cnj(tribunal: str) -> str:
 
 def _nome() -> str:
     return f"{SORTE.choice(NOMES)} {SORTE.choice(SOBRENOMES)} {SORTE.choice(SOBRENOMES)}"
+
+
+def _cpf() -> str:
+    """CPF ficticio com digitos verificadores corretos."""
+    base = [SORTE.randint(0, 9) for _ in range(9)]
+    for tamanho in (9, 10):
+        resto = sum(d * p for d, p in zip(base, range(tamanho + 1, 1, -1), strict=True)) % 11
+        base.append(0 if resto < 2 else 11 - resto)
+    return "".join(map(str, base))
+
+
+def _documento(cifra: CifraDeCampo, chave_indice: bytes) -> tuple[str | None, bytes | None]:
+    """Sete em cada dez credores com CPF no processo (como quando a publicacao traz o documento)."""
+    if SORTE.random() > 0.7:
+        return None, None
+    cpf = _cpf()
+    return indice_cego(chave_indice, "cpf", cpf), cifra.cifrar(cpf, CONTEXTO_DOCUMENTO_DO_PROCESSO)
 
 
 def _valor() -> Decimal:
@@ -194,7 +213,9 @@ def main() -> None:  # noqa: PLR0912, PLR0915 - roteiro linear de carga de dados
             )
             falecido = SORTE.random() < 0.12
             c.execute(
-                "insert into core.partes (nome, tipo, falecido) values (%s, 'pf', %s) returning id", [_nome(), falecido]
+                """insert into core.partes (nome, tipo, falecido, documento_hash, documento_cifrado)
+                   values (%s, 'pf', %s, %s, %s) returning id""",
+                [_nome(), falecido, *_documento(cifra, chave_indice)],
             )
             credor = c.fetchone()[0]  # type: ignore[index]
             c.execute(
@@ -431,6 +452,39 @@ def main() -> None:  # noqa: PLR0912, PLR0915 - roteiro linear de carga de dados
         c.execute("select app.emitir_verificacao(%s, %s)", [alvo, carta[0] if carta else None])
         codigo = c.fetchone()[0]  # type: ignore[index]
         c.execute("select app.consultar_verificacao(%s)", [codigo])
+
+        # Contato: cadencia padrao, contato oficial da carta e tarefas abertas no painel.
+        passos = [
+            {"dia": 0, "canal": "whatsapp", "modelo": "apresentacao_precatorio"},
+            {"dia": 3, "canal": "ligacao", "instrucao": "Ligar e oferecer o código anti-golpe"},
+            {"dia": 7, "canal": "carta"},
+        ]
+        c.execute(
+            "insert into app.cadencias (tenant_id, nome, passos) values (%s, 'Padrão 7 dias', %s)",
+            [tenant, json.dumps(passos)],
+        )
+        c.execute(
+            "update app.tenants set config = config || %s where id = %s",
+            [json.dumps({"contato_publico": "(11) 4000-0000 · contato@demo.local"}), tenant],
+        )
+        # Fontes do radar com datas plausiveis (a faixa de fontes da tela mostra o frescor de cada uma).
+        for fonte, horas in (("djen", 3), ("datajud", 26), ("depre_tjsp", 9 * 24), ("loa_uniao", 40 * 24)):
+            c.execute(
+                "update core.fontes set ultima_coleta_em = now() - make_interval(hours => %s) where id = %s",
+                [horas, fonte],
+            )
+        gestor = ids_usuarios["gestor@demo.local"]
+        for titulo, estagio_alvo, dias in (
+            ("Ligar para o credor e oferecer o código anti-golpe", "em_contato", 0),
+            ("Imprimir e postar a carta com o código", "respondeu", 1),
+        ):
+            c.execute(
+                """insert into app.tarefas (tenant_id, lead_id, titulo, responsavel_id, criado_por, vence_em)
+                   values (%s, %s, %s, %s, %s, now() + make_interval(days => %s))""",
+                [tenant, lead_por_estagio[estagio_alvo], titulo, gestor, operadora, dias],
+            )
+        # Central do WhatsApp: conversas com o copiloto, modelos, automacao e historico para as metricas.
+        semear_central(c, tenant, cifra, operadora=operadora, gestor=gestor)
         conn.commit()
     print("Codigo anti-golpe de demonstracao:", codigo)
     print("Base de demonstracao pronta. Usuarios:", ", ".join(USUARIOS_DEMO), "| senha:", SENHA_DEMO)

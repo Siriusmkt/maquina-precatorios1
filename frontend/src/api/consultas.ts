@@ -8,15 +8,40 @@ import {
 } from "@tanstack/react-query";
 import { api } from "./cliente";
 import type {
+  Automacao,
+  AutomacaoSalva,
+  ConversaDetalhe,
+  ConversaResumo,
+  FiltroConversa,
+  MetricasWhatsApp,
+  ModeloDaCentral,
+  RespostaRapida,
+  ResumoCentral,
+  SaudeWhatsApp,
+  StatusConversa,
+  VariavelModelo,
+  Cadencia,
+  Equipe,
   Estagio,
   FiltrosRadar,
+  FonteDoRadar,
+  IntegracaoBureau,
+  IntegracaoWhatsApp,
   LeadDetalhe,
+  LinhaImportada,
   LeadResumo,
   Painel,
   PaginaRadar,
   Perfil,
   Precificacao,
+  Preferencias,
+  PainelResolver,
+  PassoCadencia,
+  ResultadoImportacao,
+  ResumoCessao,
   ResumoRadar,
+  Sala,
+  Tarefa,
   VerificacaoPublica,
 } from "./tipos";
 
@@ -27,6 +52,25 @@ export const chaves = {
   painel: (t: string) => ["painel", t] as const,
   leads: (t: string) => ["leads", t] as const,
   lead: (t: string, id: string) => ["lead", t, id] as const,
+  equipe: (t: string) => ["equipe", t] as const,
+  preferencias: (t: string) => ["preferencias", t] as const,
+  whatsapp: (t: string) => ["whatsapp", t] as const,
+  cadencias: (t: string) => ["cadencias", t] as const,
+  tarefas: (t: string) => ["tarefas", t] as const,
+  resolver: (t: string) => ["resolver", t] as const,
+  cessoes: (t: string) => ["cessoes", t] as const,
+  sala: (t: string, id: string) => ["sala", t, id] as const,
+  bureau: (t: string) => ["bureau", t] as const,
+  central: (t: string) => ["central", t] as const,
+  centralResumo: (t: string) => ["central", t, "resumo"] as const,
+  conversas: (t: string, filtro: string, busca: string, etiqueta: string) =>
+    ["central", t, "conversas", filtro, busca, etiqueta] as const,
+  conversa: (t: string, lead: string) => ["central", t, "conversa", lead] as const,
+  respostas: (t: string) => ["central", t, "respostas"] as const,
+  automacao: (t: string) => ["central", t, "automacao"] as const,
+  modelos: (t: string) => ["central", t, "modelos"] as const,
+  metricas: (t: string, dias: number) => ["central", t, "metricas", dias] as const,
+  saudeWhatsApp: (t: string) => ["central", t, "saude"] as const,
 };
 
 function consulta(filtros: FiltrosRadar, cursor?: string): string {
@@ -62,6 +106,14 @@ export function useResumoRadar(tenant: string) {
   return useQuery({ queryKey: chaves.resumo(tenant), queryFn: () => api<ResumoRadar>(`/t/${tenant}/radar/resumo`) });
 }
 
+export function useFontesRadar(tenant: string) {
+  return useQuery({
+    queryKey: ["radar-fontes", tenant],
+    queryFn: () => api<FonteDoRadar[]>(`/t/${tenant}/radar/fontes`),
+    staleTime: 60_000,
+  });
+}
+
 export function usePainel(tenant: string) {
   return useQuery({ queryKey: chaves.painel(tenant), queryFn: () => api<Painel>(`/t/${tenant}/painel`) });
 }
@@ -70,8 +122,18 @@ export function useLeads(tenant: string) {
   return useQuery({ queryKey: chaves.leads(tenant), queryFn: () => api<LeadResumo[]>(`/t/${tenant}/leads`) });
 }
 
+/** Enquanto algo esta na fila do worker (mensagem, busca no bureau), a tela se atualiza sozinha. */
+export function temAlgoNaFila(d: LeadDetalhe | undefined): boolean {
+  if (!d) return false;
+  return d.resolver?.ultimo?.status === "pendente" || d.conversa?.envios.some((e) => e.status === "pendente") === true;
+}
+
 export function useLead(tenant: string, id: string) {
-  return useQuery({ queryKey: chaves.lead(tenant, id), queryFn: () => api<LeadDetalhe>(`/t/${tenant}/leads/${id}`) });
+  return useQuery({
+    queryKey: chaves.lead(tenant, id),
+    queryFn: () => api<LeadDetalhe>(`/t/${tenant}/leads/${id}`),
+    refetchInterval: (q) => (temAlgoNaFila(q.state.data) ? 4000 : false),
+  });
 }
 
 function useInvalidar(tenant: string) {
@@ -152,4 +214,450 @@ export function useRegistrarInteracao(tenant: string, lead: string) {
 
 export function verificarCodigo(codigo: string): Promise<VerificacaoPublica> {
   return api<VerificacaoPublica>("/publico/verificacao", { metodo: "POST", corpo: { codigo }, semRenovar: true });
+}
+
+// ------------------------------------------------------------------ equipe e preferencias
+export function useEquipe(tenant: string) {
+  return useQuery({ queryKey: chaves.equipe(tenant), queryFn: () => api<Equipe>(`/t/${tenant}/equipe`) });
+}
+
+function useInvalidarEquipe(tenant: string) {
+  const cliente = useQueryClient();
+  return () => void cliente.invalidateQueries({ queryKey: chaves.equipe(tenant) });
+}
+
+export function useConvidar(tenant: string) {
+  const invalidar = useInvalidarEquipe(tenant);
+  return useMutation({
+    mutationFn: (v: { email: string; papel: string; nome_publico?: string }) =>
+      api<{ user_id: string }>(`/t/${tenant}/equipe`, { metodo: "POST", corpo: v }),
+    onSuccess: invalidar,
+  });
+}
+
+export function useAlterarMembro(tenant: string) {
+  const invalidar = useInvalidarEquipe(tenant);
+  return useMutation({
+    mutationFn: (v: { user_id: string; papel?: string; nome_publico?: string }) =>
+      api<void>(`/t/${tenant}/equipe/${v.user_id}`, {
+        metodo: "PATCH",
+        corpo: { papel: v.papel, nome_publico: v.nome_publico },
+      }),
+    onSuccess: invalidar,
+  });
+}
+
+export function useRemoverMembro(tenant: string) {
+  const invalidar = useInvalidarEquipe(tenant);
+  return useMutation({
+    mutationFn: (userId: string) => api<void>(`/t/${tenant}/equipe/${userId}`, { metodo: "DELETE" }),
+    onSuccess: invalidar,
+  });
+}
+
+export function usePreferencias(tenant: string) {
+  return useQuery({ queryKey: chaves.preferencias(tenant), queryFn: () => api<Preferencias>(`/t/${tenant}/preferencias`) });
+}
+
+export function useSalvarPreferencias(tenant: string) {
+  const cliente = useQueryClient();
+  return useMutation({
+    mutationFn: (valores: Record<string, string | number | null>) =>
+      api<Preferencias>(`/t/${tenant}/preferencias`, { metodo: "PATCH", corpo: valores }),
+    onSuccess: (dados) => cliente.setQueryData(chaves.preferencias(tenant), dados),
+  });
+}
+
+// ------------------------------------------------------------------ contato
+export function useAdicionarContato(tenant: string, lead: string) {
+  const invalidar = useInvalidar(tenant);
+  return useMutation({
+    mutationFn: (v: { tipo: "telefone" | "email" | "endereco"; valor: string }) =>
+      api<{ id: string }>(`/t/${tenant}/leads/${lead}/contatos`, { metodo: "POST", corpo: v }),
+    onSuccess: () => invalidar(chaves.lead(tenant, lead)),
+  });
+}
+
+export function useAutorizacoes(tenant: string, lead: string) {
+  const invalidar = useInvalidar(tenant);
+  return useMutation({
+    mutationFn: (v: { contato: string; whatsapp_autorizado?: boolean; nao_me_ligue?: boolean }) =>
+      api<void>(`/t/${tenant}/contatos/${v.contato}`, {
+        metodo: "PATCH",
+        corpo: { whatsapp_autorizado: v.whatsapp_autorizado, nao_me_ligue: v.nao_me_ligue },
+      }),
+    onSuccess: () => invalidar(chaves.lead(tenant, lead)),
+  });
+}
+
+export function usePedirWhatsApp(tenant: string, lead: string) {
+  const invalidar = useInvalidar(tenant);
+  return useMutation({
+    mutationFn: (v: { contato_id: string; texto?: string; modelo?: string }) =>
+      api<{ id: string; status: string }>(`/t/${tenant}/leads/${lead}/whatsapp`, { metodo: "POST", corpo: v }),
+    onSuccess: () => invalidar(chaves.lead(tenant, lead)),
+  });
+}
+
+export function useCadenciaDoLead(tenant: string, lead: string) {
+  const invalidar = useInvalidar(tenant);
+  const cliente = useQueryClient();
+  const depois = () => {
+    invalidar(chaves.lead(tenant, lead));
+    void cliente.invalidateQueries({ queryKey: chaves.cadencias(tenant) });
+  };
+  const iniciar = useMutation({
+    mutationFn: (cadencia_id: string) =>
+      api<void>(`/t/${tenant}/leads/${lead}/cadencia`, { metodo: "PUT", corpo: { cadencia_id } }),
+    onSuccess: depois,
+  });
+  const parar = useMutation({
+    mutationFn: () => api<void>(`/t/${tenant}/leads/${lead}/cadencia`, { metodo: "DELETE" }),
+    onSuccess: depois,
+  });
+  return { iniciar, parar };
+}
+
+export function useWhatsApp(tenant: string, ligado = true) {
+  return useQuery({
+    queryKey: chaves.whatsapp(tenant),
+    queryFn: () => api<IntegracaoWhatsApp>(`/t/${tenant}/integracoes/whatsapp`),
+    enabled: ligado,
+  });
+}
+
+export function useSalvarWhatsApp(tenant: string) {
+  const cliente = useQueryClient();
+  const depois = () => void cliente.invalidateQueries({ queryKey: chaves.whatsapp(tenant) });
+  const salvar = useMutation({
+    mutationFn: (v: Record<string, unknown>) =>
+      api<void>(`/t/${tenant}/integracoes/whatsapp`, { metodo: "PUT", corpo: v }),
+    onSuccess: depois,
+  });
+  const desligar = useMutation({
+    mutationFn: () => api<void>(`/t/${tenant}/integracoes/whatsapp`, { metodo: "DELETE" }),
+    onSuccess: depois,
+  });
+  return { salvar, desligar };
+}
+
+export function useCadencias(tenant: string) {
+  return useQuery({ queryKey: chaves.cadencias(tenant), queryFn: () => api<Cadencia[]>(`/t/${tenant}/cadencias`) });
+}
+
+export function useEditarCadencias(tenant: string) {
+  const cliente = useQueryClient();
+  const depois = () => void cliente.invalidateQueries({ queryKey: chaves.cadencias(tenant) });
+  const criar = useMutation({
+    mutationFn: (v: { nome: string; passos: PassoCadencia[]; ativa?: boolean }) =>
+      api<{ id: string }>(`/t/${tenant}/cadencias`, { metodo: "POST", corpo: v }),
+    onSuccess: depois,
+  });
+  const mudar = useMutation({
+    mutationFn: (v: { id: string; nome?: string; passos?: PassoCadencia[]; ativa?: boolean }) =>
+      api<void>(`/t/${tenant}/cadencias/${v.id}`, {
+        metodo: "PATCH",
+        corpo: { nome: v.nome, passos: v.passos, ativa: v.ativa },
+      }),
+    onSuccess: depois,
+  });
+  const remover = useMutation({
+    mutationFn: (id: string) => api<void>(`/t/${tenant}/cadencias/${id}`, { metodo: "DELETE" }),
+    onSuccess: depois,
+  });
+  return { criar, mudar, remover };
+}
+
+export function useTarefas(tenant: string) {
+  return useQuery({ queryKey: chaves.tarefas(tenant), queryFn: () => api<Tarefa[]>(`/t/${tenant}/tarefas`) });
+}
+
+export function useEditarTarefas(tenant: string) {
+  const cliente = useQueryClient();
+  const depois = () => void cliente.invalidateQueries({ queryKey: chaves.tarefas(tenant) });
+  const criar = useMutation({
+    mutationFn: (v: { titulo: string; lead_id?: string; vence_em?: string }) =>
+      api<{ id: string }>(`/t/${tenant}/tarefas`, { metodo: "POST", corpo: v }),
+    onSuccess: depois,
+  });
+  const concluir = useMutation({
+    mutationFn: (v: { id: string; concluida: boolean }) =>
+      api<void>(`/t/${tenant}/tarefas/${v.id}`, { metodo: "PATCH", corpo: { concluida: v.concluida } }),
+    onSuccess: depois,
+  });
+  return { criar, concluir };
+}
+
+// ------------------------------------------------------------------ resolver
+export function useResolver(tenant: string) {
+  return useQuery({
+    queryKey: chaves.resolver(tenant),
+    queryFn: () => api<PainelResolver>(`/t/${tenant}/resolver`),
+    refetchInterval: (q) => (q.state.data?.recentes.some((r) => r.status === "pendente") ? 5000 : false),
+  });
+}
+
+export function useBureau(tenant: string, ligado: boolean) {
+  return useQuery({
+    queryKey: chaves.bureau(tenant),
+    queryFn: () => api<IntegracaoBureau>(`/t/${tenant}/integracoes/bureau`),
+    enabled: ligado,
+  });
+}
+
+export function useSalvarBureau(tenant: string) {
+  const cliente = useQueryClient();
+  const depois = () => {
+    void cliente.invalidateQueries({ queryKey: chaves.bureau(tenant) });
+    void cliente.invalidateQueries({ queryKey: chaves.resolver(tenant) });
+  };
+  const salvar = useMutation({
+    mutationFn: (v: { automatico: boolean; limite_dia: number; access_token?: string; token_id?: string }) =>
+      api<void>(`/t/${tenant}/integracoes/bureau`, { metodo: "PUT", corpo: v }),
+    onSuccess: depois,
+  });
+  const desligar = useMutation({
+    mutationFn: () => api<void>(`/t/${tenant}/integracoes/bureau`, { metodo: "DELETE" }),
+    onSuccess: depois,
+  });
+  return { salvar, desligar };
+}
+
+export function useBuscaNoBureau(tenant: string, lead: string) {
+  const invalidar = useInvalidar(tenant);
+  const depois = () => invalidar(chaves.lead(tenant, lead), chaves.resolver(tenant));
+  const informarCpf = useMutation({
+    mutationFn: (cpf: string) => api<void>(`/t/${tenant}/leads/${lead}/documento`, { metodo: "PUT", corpo: { cpf } }),
+    onSuccess: depois,
+  });
+  const buscar = useMutation({
+    mutationFn: () => api<{ id: string }>(`/t/${tenant}/leads/${lead}/enriquecer`, { metodo: "POST" }),
+    onSuccess: depois,
+  });
+  return { informarCpf, buscar };
+}
+
+export function importarLote(tenant: string, linhas: LinhaImportada[]): Promise<ResultadoImportacao> {
+  return api<ResultadoImportacao>(`/t/${tenant}/resolver/importacao`, { metodo: "POST", corpo: { linhas } });
+}
+
+// ------------------------------------------------------------------ fechamento
+export function useCessoes(tenant: string) {
+  return useQuery({ queryKey: chaves.cessoes(tenant), queryFn: () => api<ResumoCessao[]>(`/t/${tenant}/cessoes`) });
+}
+
+export function useSala(tenant: string, id: string) {
+  return useQuery({ queryKey: chaves.sala(tenant, id), queryFn: () => api<Sala>(`/t/${tenant}/cessoes/${id}`) });
+}
+
+export function useAbrirSala(tenant: string, lead: string) {
+  const invalidar = useInvalidar(tenant);
+  return useMutation({
+    mutationFn: (v: { valor: string; proposta_id?: string }) =>
+      api<{ id: string }>(`/t/${tenant}/leads/${lead}/cessao`, { metodo: "POST", corpo: v }),
+    onSuccess: () => invalidar(chaves.lead(tenant, lead), chaves.cessoes(tenant)),
+  });
+}
+
+/** Tudo que muda a sala recarrega a sala, a lista e o lead (o funil acompanha as etapas). */
+export function useEditarSala(tenant: string, sala: string, lead: string) {
+  const invalidar = useInvalidar(tenant);
+  const depois = () => invalidar(chaves.sala(tenant, sala), chaves.cessoes(tenant), chaves.lead(tenant, lead));
+  const mudar = useMutation({
+    mutationFn: (v: Record<string, string | null>) => api<void>(`/t/${tenant}/cessoes/${sala}`, { metodo: "PATCH", corpo: v }),
+    onSuccess: depois,
+  });
+  const avancar = useMutation({
+    mutationFn: (v: { para: string; motivo?: string }) =>
+      api<void>(`/t/${tenant}/cessoes/${sala}/etapa`, { metodo: "POST", corpo: v }),
+    onSuccess: depois,
+  });
+  const revisar = useMutation({
+    mutationFn: (v: { id: string; status: "aprovado" | "rejeitado"; motivo?: string }) =>
+      api<void>(`/t/${tenant}/documentos/${v.id}`, { metodo: "PATCH", corpo: { status: v.status, motivo: v.motivo } }),
+    onSuccess: depois,
+  });
+  const apagar = useMutation({
+    mutationFn: (id: string) => api<void>(`/t/${tenant}/documentos/${id}`, { metodo: "DELETE" }),
+    onSuccess: depois,
+  });
+  return { mudar, avancar, revisar, apagar, recarregar: depois };
+}
+
+// ------------------------------------------------------------------ senha (paginas publicas)
+export function pedirNovaSenha(email: string) {
+  return api<void>("/auth/recuperar", { metodo: "POST", corpo: { email }, semRenovar: true });
+}
+
+export function definirSenha(accessToken: string, senha: string) {
+  return api<Perfil>("/auth/definir-senha", { metodo: "POST", corpo: { access_token: accessToken, senha }, semRenovar: true });
+}
+
+// ------------------------------------------------------------------ Central do WhatsApp
+export function useResumoCentral(tenant: string) {
+  return useQuery({
+    queryKey: chaves.centralResumo(tenant),
+    queryFn: () => api<ResumoCentral>(`/t/${tenant}/whatsapp/resumo`),
+    refetchInterval: 20_000,
+    staleTime: 10_000,
+  });
+}
+
+export function useConversas(tenant: string, filtro: FiltroConversa, busca: string, etiqueta: string) {
+  return useQuery({
+    queryKey: chaves.conversas(tenant, filtro, busca, etiqueta),
+    queryFn: ({ signal }) => {
+      const p = new URLSearchParams({ filtro, limite: "80" });
+      if (busca.trim()) p.set("busca", busca.trim());
+      if (etiqueta) p.set("etiqueta", etiqueta);
+      return api<ConversaResumo[]>(`/t/${tenant}/whatsapp/conversas?${p.toString()}`, { sinal: signal });
+    },
+    placeholderData: keepPreviousData,
+    refetchInterval: 12_000,
+  });
+}
+
+/** Enquanto a IA pensa ou um envio esta na fila, a conversa e lida de novo a cada 2,5 s. */
+export function useConversa(tenant: string, lead: string | null) {
+  return useQuery({
+    queryKey: chaves.conversa(tenant, lead ?? ""),
+    queryFn: () => api<ConversaDetalhe>(`/t/${tenant}/whatsapp/conversas/${lead}`),
+    enabled: Boolean(lead),
+    refetchInterval: (q) => {
+      const d = q.state.data;
+      return d && (d.ia_pensando || d.envios.some((e) => e.status === "pendente")) ? 2_500 : 10_000;
+    },
+  });
+}
+
+export function useAcoesDaConversa(tenant: string, lead: string) {
+  const cliente = useQueryClient();
+  const depois = () => {
+    void cliente.invalidateQueries({ queryKey: chaves.central(tenant) });
+    void cliente.invalidateQueries({ queryKey: chaves.lead(tenant, lead) });
+  };
+  const mudar = useMutation({
+    mutationFn: (v: {
+      status?: StatusConversa;
+      etiquetas?: string[];
+      followup_pausado?: boolean;
+      responsavel_id?: string;
+      sem_responsavel?: boolean;
+      descartar_rascunho?: boolean;
+    }) => api<void>(`/t/${tenant}/whatsapp/conversas/${lead}`, { metodo: "PATCH", corpo: v }),
+    onSuccess: depois,
+  });
+  const lida = useMutation({
+    mutationFn: () => api<void>(`/t/${tenant}/whatsapp/conversas/${lead}/lida`, { metodo: "POST" }),
+    onSuccess: () => void cliente.invalidateQueries({ queryKey: chaves.central(tenant) }),
+  });
+  const pedirIA = useMutation({
+    mutationFn: (v: { tipo?: "rascunho" | "analise"; instrucao?: string }) =>
+      api<{ id: string; status: string; ja_existia: boolean }>(`/t/${tenant}/whatsapp/conversas/${lead}/ia`, {
+        metodo: "POST",
+        corpo: v,
+      }),
+    onSuccess: depois,
+  });
+  const enviar = useMutation({
+    mutationFn: (v: { contato_id: string; texto?: string; modelo?: string; rascunho_ia?: boolean }) =>
+      api<{ id: string; status: string }>(`/t/${tenant}/leads/${lead}/whatsapp`, { metodo: "POST", corpo: v }),
+    onSuccess: depois,
+  });
+  return { mudar, lida, pedirIA, enviar };
+}
+
+export function useRespostas(tenant: string) {
+  return useQuery({
+    queryKey: chaves.respostas(tenant),
+    queryFn: () => api<RespostaRapida[]>(`/t/${tenant}/whatsapp/respostas`),
+    staleTime: 60_000,
+  });
+}
+
+export function useEditarRespostas(tenant: string) {
+  const cliente = useQueryClient();
+  const depois = () => void cliente.invalidateQueries({ queryKey: chaves.respostas(tenant) });
+  type Dados = { atalho: string; titulo: string; texto: string; intencao: string | null };
+  const criar = useMutation({
+    mutationFn: (v: Dados) => api<{ id: string }>(`/t/${tenant}/whatsapp/respostas`, { metodo: "POST", corpo: v }),
+    onSuccess: depois,
+  });
+  const mudar = useMutation({
+    mutationFn: ({ id, ...v }: Dados & { id: string }) =>
+      api<void>(`/t/${tenant}/whatsapp/respostas/${id}`, {
+        metodo: "PATCH",
+        corpo: { ...v, intencao: v.intencao ?? undefined, limpar_intencao: v.intencao === null },
+      }),
+    onSuccess: depois,
+  });
+  const remover = useMutation({
+    mutationFn: (id: string) => api<void>(`/t/${tenant}/whatsapp/respostas/${id}`, { metodo: "DELETE" }),
+    onSuccess: depois,
+  });
+  const usar = useMutation({
+    mutationFn: (id: string) => api<void>(`/t/${tenant}/whatsapp/respostas/${id}/uso`, { metodo: "POST" }),
+    onSuccess: depois,
+  });
+  return { criar, mudar, remover, usar };
+}
+
+export function useAutomacao(tenant: string) {
+  return useQuery({
+    queryKey: chaves.automacao(tenant),
+    queryFn: () => api<AutomacaoSalva>(`/t/${tenant}/whatsapp/automacao`),
+  });
+}
+
+export function useSalvarAutomacao(tenant: string) {
+  const cliente = useQueryClient();
+  return useMutation({
+    mutationFn: (v: Automacao) => api<void>(`/t/${tenant}/whatsapp/automacao`, { metodo: "PUT", corpo: v }),
+    onSuccess: () => void cliente.invalidateQueries({ queryKey: chaves.central(tenant) }),
+  });
+}
+
+export function useModelos(tenant: string) {
+  return useQuery({
+    queryKey: chaves.modelos(tenant),
+    queryFn: () => api<ModeloDaCentral[]>(`/t/${tenant}/whatsapp/modelos`),
+  });
+}
+
+export function useEditarModelos(tenant: string) {
+  const cliente = useQueryClient();
+  const depois = () => {
+    void cliente.invalidateQueries({ queryKey: chaves.modelos(tenant) });
+    void cliente.invalidateQueries({ queryKey: chaves.whatsapp(tenant) });
+  };
+  const cadastrar = useMutation({
+    mutationFn: (v: { nome: string; idioma: string; variaveis: VariavelModelo[] }) =>
+      api<void>(`/t/${tenant}/whatsapp/modelos/${v.nome}`, {
+        metodo: "PUT",
+        corpo: { idioma: v.idioma, variaveis: v.variaveis },
+      }),
+    onSuccess: depois,
+  });
+  const remover = useMutation({
+    mutationFn: (nome: string) => api<void>(`/t/${tenant}/whatsapp/modelos/${nome}`, { metodo: "DELETE" }),
+    onSuccess: depois,
+  });
+  return { cadastrar, remover };
+}
+
+export function useMetricasWhatsApp(tenant: string, dias: number) {
+  return useQuery({
+    queryKey: chaves.metricas(tenant, dias),
+    queryFn: () => api<MetricasWhatsApp>(`/t/${tenant}/whatsapp/metricas?dias=${dias}`),
+    placeholderData: keepPreviousData,
+    staleTime: 60_000,
+  });
+}
+
+export function useSaudeWhatsApp(tenant: string) {
+  return useQuery({
+    queryKey: chaves.saudeWhatsApp(tenant),
+    queryFn: () => api<SaudeWhatsApp>(`/t/${tenant}/whatsapp/saude`),
+    refetchInterval: 60_000,
+  });
 }

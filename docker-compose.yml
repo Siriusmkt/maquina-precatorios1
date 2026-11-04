@@ -31,6 +31,9 @@ services:
       MAQUINA_SUPABASE_URL: ${MAQUINA_SUPABASE_URL:?defina MAQUINA_SUPABASE_URL}
       MAQUINA_SUPABASE_ANON_KEY: ${MAQUINA_SUPABASE_ANON_KEY:?defina MAQUINA_SUPABASE_ANON_KEY}
       MAQUINA_SUPABASE_JWT_SECRET: ${MAQUINA_SUPABASE_JWT_SECRET:-}
+      MAQUINA_SUPABASE_SERVICE_ROLE_KEY: ${MAQUINA_SUPABASE_SERVICE_ROLE_KEY:-}
+      MAQUINA_URL_PUBLICA: ${MAQUINA_URL_PUBLICA:-}
+      MAQUINA_STORAGE_BUCKET: ${MAQUINA_STORAGE_BUCKET:-}
       MAQUINA_ORIGENS_PERMITIDAS: ${MAQUINA_ORIGENS_PERMITIDAS:?defina MAQUINA_ORIGENS_PERMITIDAS}
       MAQUINA_COOKIE_SEGURO: ${MAQUINA_COOKIE_SEGURO:-}
       MAQUINA_SESSAO_RENOVACAO_DIAS: ${MAQUINA_SESSAO_RENOVACAO_DIAS:-}
@@ -40,7 +43,7 @@ services:
       redis: { condition: service_healthy }
     networks: [interna]
 
-  # Coleta do DJEN + triagem + Leitor IA. Mesma imagem da API, outro comando.
+  # Coleta do DJEN, Leitor IA, mensageiro (WhatsApp e cadencias) e Resolver (bureau). Mesma imagem da API.
   worker:
     <<: *endurecido
     build: ./backend
@@ -60,6 +63,21 @@ services:
       MAQUINA_LEITOR_ORCAMENTO_DIA_USD: ${MAQUINA_LEITOR_ORCAMENTO_DIA_USD:-}
       MAQUINA_LEITOR_CONCORRENCIA: ${MAQUINA_LEITOR_CONCORRENCIA:-}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # WhatsApp: os tokens da Meta ficam cifrados no banco (cadastrados pela tela Contato), nao aqui.
+      MAQUINA_MENSAGEIRO_S: ${MAQUINA_MENSAGEIRO_S:-}
+      MAQUINA_COPILOTO_ATIVO: ${MAQUINA_COPILOTO_ATIVO:-}
+      MAQUINA_COPILOTO_MODELO: ${MAQUINA_COPILOTO_MODELO:-}
+      MAQUINA_COPILOTO_ESFORCO: ${MAQUINA_COPILOTO_ESFORCO:-}
+      MAQUINA_COPILOTO_ORCAMENTO_MAX_USD: ${MAQUINA_COPILOTO_ORCAMENTO_MAX_USD:-}
+      MAQUINA_FOLLOWUP_S: ${MAQUINA_FOLLOWUP_S:-}
+      MAQUINA_META_SINCRONIA_S: ${MAQUINA_META_SINCRONIA_S:-}
+      MAQUINA_URL_PUBLICA: ${MAQUINA_URL_PUBLICA:-}
+      # Bureau (Resolver): as chaves de cada cliente ficam cifradas no banco (tela Resolver), nao aqui.
+      MAQUINA_RESOLVEDOR_S: ${MAQUINA_RESOLVEDOR_S:-}
+      # DataJud (CNJ): chave publica divulgada pelo CNJ; so o worker a recebe.
+      MAQUINA_DATAJUD_ATIVO: ${MAQUINA_DATAJUD_ATIVO:-}
+      MAQUINA_DATAJUD_CHAVE: ${MAQUINA_DATAJUD_CHAVE:-}
+      MAQUINA_DATAJUD_POR_CICLO: ${MAQUINA_DATAJUD_POR_CICLO:-}
     tmpfs: ["/tmp:uid=10001,gid=10001"]
     healthcheck:
       test: ["CMD", "python", "-c", "import os,sys,time; sys.exit(0 if time.time() - os.path.getmtime('/tmp/maquina-worker-vivo') < 120 else 1)"]

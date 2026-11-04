@@ -13,6 +13,8 @@ import { NOMES_ESTAGIO, inteiro, paraNumero, reaisCompacto, reaisCompactoPreciso
 import { CINEMA, subir } from "@/lib/movimento";
 import { TituloDaPagina } from "../Shell";
 import { useApp } from "../contexto";
+import { BlocoTarefas } from "./Tarefas";
+import { BlocoWhatsApp } from "./BlocoWhatsApp";
 
 function Kpi({
   rotulo,
@@ -193,6 +195,14 @@ export default function Painel() {
           </Cartao>
         </motion.div>
       </div>
+
+      <motion.div className="mt-6" variants={subir} initial="inicial" animate="visivel" transition={{ delay: 0.15 }}>
+        <BlocoWhatsApp tenant={tenant.id} />
+      </motion.div>
+
+      <motion.div className="mt-6" variants={subir} initial="inicial" animate="visivel" transition={{ delay: 0.2 }}>
+        <BlocoTarefas tenant={tenant.id} podeEditar={tenant.papel !== "leitura"} />
+      </motion.div>
 
       <motion.p
         className="mt-6 flex items-center gap-2 text-[12.5px] text-tinta-500"

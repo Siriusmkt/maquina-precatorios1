@@ -13,7 +13,7 @@ from functools import cached_property
 from ipaddress import IPv4Network, IPv6Network, ip_network
 from typing import Annotated, Literal
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import Field, SecretStr, StringConstraints, field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 Rede = IPv4Network | IPv6Network
@@ -50,6 +50,11 @@ class Configuracoes(BaseSettings):
     supabase_anon_key: SecretStr
     # HS256 (Supabase self-hosted). Vazio = chaves assimetricas via JWKS (Supabase Cloud).
     supabase_jwt_secret: SecretStr | None = None
+    # Chave de servico: SO para convidar pessoas (Auth admin). Vazio = convites desligados.
+    supabase_service_role_key: SecretStr | None = None
+
+    # Endereco publico do app (links de convite, QR code das cartas e propostas).
+    url_publica: str | None = None
     jwt_audiencia: str = "authenticated"
     jwt_tolerancia_segundos: int = 10
 
@@ -63,6 +68,10 @@ class Configuracoes(BaseSettings):
 
     # Limites
     corpo_max_bytes: int = 64 * 1024
+    # Documentos da sala de cessao (unica rota com corpo grande; o nginx tem a mesma regra).
+    arquivo_max_bytes: int = Field(default=10 * 1024 * 1024, ge=1024, le=10 * 1024 * 1024)
+    # Bucket privado do Supabase Storage onde ficam os documentos (sempre cifrados antes de subir).
+    storage_bucket: Annotated[str, StringConstraints(pattern=r"^[a-z0-9][a-z0-9-]{2,62}$")] = "cessoes"
 
     # Criptografia de campos (AES-256-GCM) com rotacao: {"1": "<base64 32 bytes>", ...}
     chaves_cifra: dict[int, SecretStr]
@@ -84,10 +93,10 @@ class Configuracoes(BaseSettings):
             return [ip_network(r.strip(), strict=False) for r in valor.split(",") if r.strip()]
         return valor
 
-    @field_validator("supabase_url")
+    @field_validator("supabase_url", "url_publica")
     @classmethod
-    def _sem_barra_final(cls, valor: str) -> str:
-        return valor.rstrip("/")
+    def _sem_barra_final(cls, valor: str | None) -> str | None:
+        return valor.rstrip("/") if valor else valor
 
     @model_validator(mode="after")
     def _validar(self) -> Configuracoes:
@@ -108,6 +117,8 @@ class Configuracoes(BaseSettings):
                 problemas.append("origens_permitidas deve usar https")
             if not self.supabase_url.startswith("https://"):
                 problemas.append("supabase_url deve usar https")
+            if self.url_publica and not self.url_publica.startswith("https://"):
+                problemas.append("url_publica deve usar https")
             segredo = self.supabase_jwt_secret
             if segredo is not None and len(segredo.get_secret_value()) < 32:
                 problemas.append("supabase_jwt_secret curto demais")

@@ -94,6 +94,50 @@ async function main() {
   await pagina.getByText("Selo anti-golpe").scrollIntoViewIfNeeded();
   await foto("07-lead-codigo-e-contato");
 
+  // Conversa do lead: cadencia e carta ficam no mesmo bloco
+  await pagina.getByText("Conversa", { exact: true }).scrollIntoViewIfNeeded();
+  await pagina.waitForTimeout(900);
+  await foto("07b-lead-conversa");
+
+  // Resolver: bureau, planilha e buscas
+  await pagina.getByRole("link", { name: "Resolver" }).first().click();
+  await pagina.getByText("Planilha de qualquer bureau").waitFor();
+  await pagina.waitForTimeout(2000);
+  await foto("07d-resolver", true);
+
+  // Fechamento: salas de cessao por etapa
+  await pagina.getByRole("link", { name: "Fechamento" }).first().click();
+  await pagina.getByText("sem papel perdido.").waitFor();
+  await pagina.waitForTimeout(1800);
+  await foto("07e-fechamento");
+
+  // Contato: cadencias e WhatsApp oficial
+  await pagina.getByRole("link", { name: "Contato" }).first().click();
+  await pagina.getByText("Regras que a máquina nunca quebra").waitFor();
+  await pagina.waitForTimeout(2200);
+  await foto("07c-contato", true);
+
+  // Central do WhatsApp: caixa de entrada com copiloto, metricas e saude do numero
+  await pagina.getByRole("link", { name: /^WhatsApp/ }).first().click();
+  await pagina.getByText("Conversas que").waitFor();
+  await pagina.waitForTimeout(1800);
+  const conversas = pagina.locator('[aria-label="Buscar conversas"]');
+  if ((await conversas.count()) < 1) problemas.push("central sem a busca de conversas");
+  const primeira = pagina.locator("button:has(span.truncate)").filter({ hasText: /há|agora/ }).first();
+  if (await primeira.count()) {
+    await primeira.click();
+    await pagina.getByText("Copiloto").first().waitFor();
+    await pagina.waitForTimeout(1500);
+  } else {
+    problemas.push("central sem conversas para abrir");
+  }
+  await foto("07f-whatsapp-conversa");
+  for (const [aba, nome] of [["Métricas", "07g-whatsapp-metricas"], ["Saúde", "07h-whatsapp-saude"]]) {
+    await pagina.getByRole("button", { name: aba }).first().click();
+    await pagina.waitForTimeout(2200);
+    await foto(nome, true);
+  }
+
   // 5. Paleta de comandos: acha o credor pelo comeco do sobrenome
   await pagina.keyboard.press("Control+k");
   const termo = nomeCredor.split(" ")[1]?.slice(0, 4) ?? nomeCredor.slice(0, 4);

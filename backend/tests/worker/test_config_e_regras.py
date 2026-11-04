@@ -45,6 +45,21 @@ def test_fora_dos_testes_so_aceita_o_host_oficial_em_https(url: str) -> None:
     assert config_worker(BANCO_FALSO, **oficial).djen_url.startswith("https://comunicaapi.pje.jus.br/")
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://plataforma.bigdatacorp.com.br/pessoas",
+        "https://plataforma.bigdatacorp.com.br.evil.example/pessoas",
+        "https://10.0.0.5/pessoas",
+    ],
+)
+def test_bureau_so_no_host_oficial_em_https(url: str) -> None:
+    oficial: dict[str, Any] = {"ambiente": "producao", "djen_url": "https://comunicaapi.pje.jus.br/api/v1/comunicacao"}
+    with pytest.raises(ValidationError, match="bigdatacorp_url"):
+        config_worker(BANCO_FALSO, **oficial, bigdatacorp_url=url)
+    assert config_worker(BANCO_FALSO, **oficial).bigdatacorp_url == "https://plataforma.bigdatacorp.com.br/pessoas"
+
+
 def test_chave_ativa_precisa_existir() -> None:
     with pytest.raises(ValidationError, match="chave_cifra_ativa"):
         config_worker(BANCO_FALSO, chave_cifra_ativa=2)

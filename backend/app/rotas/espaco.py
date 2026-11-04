@@ -21,13 +21,16 @@ from app.banco.sessao import Conexao
 from app.consultas import leads as q_leads
 from app.consultas import radar as q_radar
 from app.consultas.tenant import TenantAtivo, carregar_tenant
+from app.dominio import contatos
 from app.dominio.cnj import formatar_cnj
+from app.dominio.contatos import ContatoNormalizado, TipoContato
+from app.dominio.endereco import EnderecoInvalido, normalizar_endereco
 from app.dominio.funil import Estagio, TransicaoNegada, transicoes_permitidas, validar_transicao
 from app.dominio.preco import Precificacao, PremissaInvalida
 from app.dominio.score import Score
 from app.erros import ErroApi
 from app.recursos import aplicar_limite, contexto
-from app.seguranca.cripto import FalhaDeCifra, indice_cego, normalizar_email, normalizar_telefone
+from app.seguranca.cripto import FalhaDeCifra, indice_cego
 from app.seguranca.limite import RADAR_POR_USUARIO, REVELAR_CONTATO_POR_USUARIO, SIMULADOR_POR_USUARIO
 from app.servicos import orcamento
 from app.servicos.avaliacao import avaliar_preco, avaliar_score
@@ -63,6 +66,24 @@ async def radar_resumo(tenant_id: uuid.UUID, usuario: Usuario, request: Request,
     async with rec.banco.como_usuario(usuario, contexto(request)) as conn:
         tenant = await carregar_tenant(conn, tenant_id)
         return await q_radar.resumo(conn, tenant)
+
+
+class FonteDoRadar(BaseModel):
+    id: str
+    nome: str
+    ativo: bool
+    ultima_coleta_em: datetime | None
+
+
+@router.get("/radar/fontes")
+async def radar_fontes(tenant_id: uuid.UUID, usuario: Usuario, request: Request, rec: Rec) -> list[FonteDoRadar]:
+    """De onde vem o radar e quando cada fonte foi vista pela ultima vez (sem nada de configuracao)."""
+    async with rec.banco.como_usuario(usuario, contexto(request)) as conn:
+        await carregar_tenant(conn, tenant_id)
+        cursor = await conn.execute(
+            "select id, nome, ativo, ultima_coleta_em from core.fontes order by ultima_coleta_em desc nulls last, id"
+        )
+        return [FonteDoRadar.model_validate(linha) for linha in await cursor.fetchall()]
 
 
 class Assumir(BaseModel):
@@ -110,6 +131,9 @@ class LeadDetalhe(BaseModel):
     propostas: list[q_leads.PropostaLead]
     verificacoes: list[q_leads.VerificacaoLead]
     contatos: list[q_leads.ContatoLead]
+    conversa: q_leads.Conversa
+    resolver: q_leads.ResolverDoLead
+    cessao: q_leads.CessaoDoLead | None
     transicoes: list[str]
     papel: str
 
@@ -174,6 +198,9 @@ async def detalhe_lead(
             propostas=await q_leads.propostas(conn, lead_id),
             verificacoes=await q_leads.verificacoes(conn, lead_id),
             contatos=await q_leads.contatos(conn, tenant_id, lead["credor_parte_id"]),
+            conversa=await q_leads.conversa(conn, tenant_id, lead_id),
+            resolver=await q_leads.resolver(conn, tenant_id, lead_id),
+            cessao=await q_leads.cessao(conn, tenant_id, lead_id),
             transicoes=list(transicoes_permitidas(lead["estagio"], tenant.papel)),
             papel=tenant.papel,
         )
@@ -274,12 +301,20 @@ async def registrar_interacao(
 
 class NovoContato(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
-    tipo: Literal["telefone", "email"]
-    valor: str = Field(min_length=5, max_length=254)
+    tipo: TipoContato
+    valor: str = Field(min_length=5, max_length=600)
 
 
-def _contexto_cifra(tenant_id: uuid.UUID, tipo: str) -> str:
-    return f"contatos:{tenant_id}:{tipo}"
+def _normalizar_contato(tipo: TipoContato, valor: str) -> ContatoNormalizado:
+    if tipo == "endereco":
+        try:
+            normalizar_endereco(valor)  # so para dizer o que esta errado
+        except EnderecoInvalido as exc:
+            raise ErroApi(422, "dados_invalidos", str(exc)) from exc
+    contato = contatos.normalizar(tipo, valor)
+    if contato is None:
+        raise ErroApi(422, "dados_invalidos", "telefone invalido" if tipo == "telefone" else "e-mail invalido")
+    return contato
 
 
 @router.post("/leads/{lead_id}/contatos", status_code=201)
@@ -287,11 +322,7 @@ async def adicionar_contato(
     tenant_id: uuid.UUID, lead_id: uuid.UUID, dados: NovoContato, usuario: Usuario, request: Request, rec: Rec
 ) -> dict[str, uuid.UUID]:
     """Contato informado pelo proprio credor: cifrado antes de tocar o banco."""
-    normalizado = normalizar_telefone(dados.valor) if dados.tipo == "telefone" else normalizar_email(dados.valor)
-    if dados.tipo == "telefone" and not 12 <= len(normalizado) <= 13:
-        raise ErroApi(422, "dados_invalidos", "telefone invalido")
-    if dados.tipo == "email" and "@" not in normalizado:
-        raise ErroApi(422, "dados_invalidos", "e-mail invalido")
+    contato = _normalizar_contato(dados.tipo, dados.valor)
     chave_indice = rec.config.chave_indice.get_secret_value().encode()
     async with rec.banco.como_usuario(usuario, contexto(request)) as conn:
         (await carregar_tenant(conn, tenant_id)).exigir_editor()
@@ -305,9 +336,9 @@ async def adicionar_contato(
             [
                 tenant_id,
                 lead["credor_parte_id"],
-                dados.tipo,
-                rec.cifra.cifrar(normalizado, _contexto_cifra(tenant_id, dados.tipo)),
-                indice_cego(chave_indice, dados.tipo, normalizado),
+                contato.tipo,
+                rec.cifra.cifrar(contato.valor, contatos.contexto_da_cifra(tenant_id, contato.tipo)),
+                indice_cego(chave_indice, contato.tipo, contato.comparavel),
             ],
         )
         linha = await cursor.fetchone()
@@ -333,7 +364,7 @@ async def revelar_contato(
     if linha is None or linha["tenant_id"] != tenant_id:
         raise ErroApi(404, "contato_nao_encontrado")
     try:
-        valor = rec.cifra.decifrar(linha["valor_cifrado"], _contexto_cifra(tenant_id, linha["tipo"]))
+        valor = rec.cifra.decifrar(linha["valor_cifrado"], contatos.contexto_da_cifra(tenant_id, linha["tipo"]))
     except FalhaDeCifra as exc:
         raise ErroApi(500, "erro_interno") from exc
     return ContatoRevelado(tipo=linha["tipo"], valor=valor)
@@ -411,6 +442,12 @@ async def criar_proposta(
             "recebimento_esperado": str(preco.recebimento_esperado),
             "piso_acordo": str(preco.piso_acordo) if preco.piso_acordo is not None else None,
             "preco_sugerido": str(preco.preco_sugerido) if preco.preco_sugerido is not None else None,
+            # Visao do credor, para o PDF comparar vender hoje x esperar x acordo com os numeros da epoca.
+            "aliquota_ir": str(parametros.aliquota_ir),
+            "esperar_valor": str(preco.credor.esperar_valor),
+            "data_pagamento_esperada": preco.data_pagamento_esperada.isoformat(),
+            "acordo_valor": str(preco.credor.acordo_valor) if preco.credor.acordo_valor is not None else None,
+            "acordo_meses": str(preco.credor.acordo_meses) if preco.credor.acordo_meses is not None else None,
         }
         cursor = await conn.execute(
             """insert into app.propostas (tenant_id, lead_id, valor_atualizado, valor_oferta, ir_estimado, premissas,

@@ -26,6 +26,8 @@ create table if not exists auth.users (
   id                 uuid primary key,
   email              text unique,
   raw_user_meta_data jsonb not null default '{}',
+  invited_at         timestamptz,
+  last_sign_in_at    timestamptz,
   created_at         timestamptz not null default now()
 );
 

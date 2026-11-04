@@ -11,12 +11,19 @@ import { Entrar } from "@/publico/Entrar";
 
 // Publico (chunk aberto)
 const Verificar = lazy(() => import("@/publico/Verificar"));
+const DefinirSenha = lazy(() => import("@/publico/DefinirSenha"));
 // Area logada (chunks em /app-assets, liberados so com sessao)
 const Shell = lazyProtegido(() => import("@/app/Shell"));
 const Painel = lazyProtegido(() => import("@/app/painel/Painel"));
 const Radar = lazyProtegido(() => import("@/app/radar/Radar"));
 const Funil = lazyProtegido(() => import("@/app/leads/Funil"));
 const LeadDetalhe = lazyProtegido(() => import("@/app/lead/LeadDetalhe"));
+const Equipe = lazyProtegido(() => import("@/app/equipe/Equipe"));
+const Contato = lazyProtegido(() => import("@/app/contato/Contato"));
+const Resolver = lazyProtegido(() => import("@/app/resolver/Resolver"));
+const Fechamento = lazyProtegido(() => import("@/app/fechamento/Fechamento"));
+const Sala = lazyProtegido(() => import("@/app/fechamento/Sala"));
+const Central = lazyProtegido(() => import("@/app/whatsapp/Central"));
 
 const clienteDeConsultas = new QueryClient({
   defaultOptions: {
@@ -54,6 +61,14 @@ const rotas = createBrowserRouter([
   { path: "/", element: <Navigate to="/app" replace /> },
   { path: "/entrar", element: <Entrar /> },
   {
+    path: "/definir-senha",
+    element: (
+      <Suspense fallback={null}>
+        <DefinirSenha />
+      </Suspense>
+    ),
+  },
+  {
     path: "/verificar/:codigo?",
     element: (
       <Suspense fallback={null}>
@@ -73,6 +88,12 @@ const rotas = createBrowserRouter([
       { path: "radar", element: <Radar /> },
       { path: "leads", element: <Funil /> },
       { path: "leads/:leadId", element: <LeadDetalhe /> },
+      { path: "resolver", element: <Resolver /> },
+      { path: "contato", element: <Contato /> },
+      { path: "whatsapp", element: <Central /> },
+      { path: "fechamento", element: <Fechamento /> },
+      { path: "fechamento/:salaId", element: <Sala /> },
+      { path: "equipe", element: <Equipe /> },
     ],
   },
   { path: "*", element: <NaoEncontrado /> },

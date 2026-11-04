@@ -1,10 +1,11 @@
-"""Monta as dependencias do worker: pool do Postgres, cliente do DJEN e Leitor IA."""
+"""Monta as dependencias do worker: pool do Postgres, DJEN, Leitor IA, WhatsApp e bureau."""
 
 from __future__ import annotations
 
 import contextlib
 import logging
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any
 
 import anthropic
@@ -13,10 +14,18 @@ from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 
+from worker.acompanhamento import Acompanhamento
+from worker.bureau import ClienteBigDataCorp
 from worker.config import ConfiguracoesWorker
+from worker.copiloto import Copiloto, Gerador, GeradorClaude
+from worker.datajud import ClienteDatajud
 from worker.djen import ClienteDjen
+from worker.enriquecedor import Enriquecedor
 from worker.leitor import Extrator, ExtratorClaude
-from worker.pipeline import Pipeline, Pool
+from worker.mensageiro import Mensageiro
+from worker.pipeline import Pipeline, Pool, agora_sp
+from worker.resolvedor import Resolvedor
+from worker.whatsapp import ClienteWhatsApp
 
 log = logging.getLogger("maquina.worker")
 AGENTE = "maquina-precatorios-coletor/0.1"
@@ -63,24 +72,72 @@ async def cliente_djen(
 
 
 @contextlib.asynccontextmanager
+async def cliente_datajud(
+    config: ConfiguracoesWorker, transporte: httpx.AsyncBaseTransport | None = None, *, forcar: bool = False
+) -> AsyncIterator[ClienteDatajud | None]:
+    """Cliente do DataJud, ou None quando desligado (forcar=True liga para a sonda)."""
+    if not (config.datajud_ativo or forcar) or config.datajud_chave is None:
+        yield None
+        return
+    http = httpx.AsyncClient(
+        timeout=httpx.Timeout(30.0, connect=10.0),
+        headers={"user-agent": AGENTE},
+        follow_redirects=False,
+        transport=transporte,
+    )
+    try:
+        yield ClienteDatajud(
+            http, config.datajud_url, config.datajud_chave.get_secret_value(), intervalo_s=config.datajud_intervalo_s
+        )
+    finally:
+        await http.aclose()
+
+
+@dataclass(frozen=True)
+class Servicos:
+    pool: Pool
+    pipeline: Pipeline
+    mensageiro: Mensageiro
+    resolvedor: Resolvedor
+    enriquecedor: Enriquecedor
+    copiloto: Copiloto
+    acompanhamento: Acompanhamento
+
+
+@contextlib.asynccontextmanager
 async def montar(
     config: ConfiguracoesWorker,
     *,
     transporte_djen: httpx.AsyncBaseTransport | None = None,
+    transporte_whatsapp: httpx.AsyncBaseTransport | None = None,
+    transporte_bureau: httpx.AsyncBaseTransport | None = None,
+    transporte_datajud: httpx.AsyncBaseTransport | None = None,
     extrator: Extrator | None = None,
-) -> AsyncIterator[Pipeline]:
-    """Abre e fecha tudo. `transporte_djen` e `extrator` existem para os testes."""
+    gerador: Gerador | None = None,
+) -> AsyncIterator[Servicos]:
+    """Abre e fecha tudo. Os transportes, o extrator e o gerador opcionais existem para os testes."""
     async with contextlib.AsyncExitStack() as pilha:
-        pool = criar_pool(config.worker_database_url.get_secret_value(), max_size=config.leitor_concorrencia + 4)
+        pool = criar_pool(
+            config.worker_database_url.get_secret_value(),
+            max_size=config.leitor_concorrencia + config.copiloto_concorrencia + 4,
+        )
         await pool.open()
         pilha.push_async_callback(pool.close)
         djen = await pilha.enter_async_context(cliente_djen(config, transporte=transporte_djen))
-        if extrator is None and config.leitor_ativo and config.anthropic_api_key:
+        cliente_ia: anthropic.AsyncAnthropic | None = None
+        if config.anthropic_api_key and (
+            (extrator is None and config.leitor_ativo) or (gerador is None and config.copiloto_ativo)
+        ):
             # Credencial so pelo ambiente (ANTHROPIC_API_KEY): nunca em codigo ou arquivo versionado.
             cliente_ia = anthropic.AsyncAnthropic(
                 api_key=config.anthropic_api_key.get_secret_value(), timeout=120.0, max_retries=3
             )
             pilha.push_async_callback(cliente_ia.close)
+        if gerador is None and config.copiloto_ativo and cliente_ia is not None:
+            gerador = GeradorClaude(cliente_ia, modelo=config.copiloto_modelo, esforco=config.copiloto_esforco)
+        elif gerador is None:
+            log.warning("Copiloto do WhatsApp sem IA (ANTHROPIC_API_KEY ausente ou MAQUINA_COPILOTO_ATIVO=false)")
+        if extrator is None and config.leitor_ativo and cliente_ia is not None:
             extrator = ExtratorClaude(
                 cliente_ia,
                 modelo=config.leitor_modelo,
@@ -89,4 +146,30 @@ async def montar(
             )
         elif extrator is None:
             log.warning("Leitor IA desligado (MAQUINA_LEITOR_ATIVO=false): publicacoes relevantes aguardam na fila")
-        yield Pipeline(pool, config, djen, extrator)
+        http_meta = httpx.AsyncClient(
+            timeout=httpx.Timeout(20.0, connect=10.0),
+            headers={"user-agent": AGENTE},
+            follow_redirects=False,
+            transport=transporte_whatsapp,
+        )
+        pilha.push_async_callback(http_meta.aclose)
+        mensageiro = Mensageiro(pool, config, ClienteWhatsApp(http_meta), relogio=agora_sp)
+        http_bureau = httpx.AsyncClient(
+            timeout=httpx.Timeout(40.0, connect=10.0),
+            headers={"user-agent": AGENTE},
+            follow_redirects=False,
+            transport=transporte_bureau,
+        )
+        pilha.push_async_callback(http_bureau.aclose)
+        resolvedor = Resolvedor(pool, config, ClienteBigDataCorp(http_bureau, config.bigdatacorp_url), relogio=agora_sp)
+        datajud = await pilha.enter_async_context(cliente_datajud(config, transporte_datajud))
+        enriquecedor = Enriquecedor(pool, config, datajud, relogio=agora_sp)
+        yield Servicos(
+            pool=pool,
+            pipeline=Pipeline(pool, config, djen, extrator),
+            mensageiro=mensageiro,
+            resolvedor=resolvedor,
+            enriquecedor=enriquecedor,
+            copiloto=Copiloto(pool, config, gerador, relogio=agora_sp),
+            acompanhamento=Acompanhamento(pool, relogio=agora_sp),
+        )

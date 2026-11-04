@@ -81,11 +81,14 @@ class EventoLead(BaseModel):
     data_evento: date
     extraido_por: str | None
     confianca: Decimal | None
+    fonte: str | None  # datajud, depre_tjsp, loa_uniao...
+    descricao: str | None  # nome do movimento (DataJud), quando o tipo e generico
 
 
 async def eventos(conn: Conexao, requisicao_id: uuid.UUID, processo: str | None) -> list[EventoLead]:
     cursor = await conn.execute(
-        """select e.tipo::text as tipo, e.data_evento, e.extraido_por, e.confianca
+        """select e.tipo::text as tipo, e.data_evento, e.extraido_por, e.confianca, e.fonte_id as fonte,
+                  left(e.detalhe ->> 'movimento', 120) as descricao
              from core.eventos e
             where e.requisicao_id = %s or (%s::text is not null and e.numero_cnj = %s::text)
             order by e.data_evento desc, e.id desc
@@ -200,6 +203,130 @@ async def contatos(conn: Conexao, tenant_id: uuid.UUID, parte_id: uuid.UUID | No
         [tenant_id, parte_id],
     )
     return [ContatoLead.model_validate(linha) for linha in await cursor.fetchall()]
+
+
+class CadenciaDoLead(BaseModel):
+    id: uuid.UUID
+    nome: str
+    ativa: bool
+    passo: int
+    total_passos: int
+    inicio_em: datetime | None
+    proxima_acao_em: datetime | None
+
+
+class EnvioWhatsApp(BaseModel):
+    id: uuid.UUID
+    tipo: str
+    resumo: str
+    status: str
+    erro: str | None
+    tentativas: int
+    automatico: bool
+    criado_em: datetime
+    enviado_em: datetime | None
+
+
+class Conversa(BaseModel):
+    """O que a tela do lead precisa para conversar: WhatsApp, janela de 24 h, cadencia e fila de envios."""
+
+    whatsapp_ligado: bool
+    modelos: list[str]
+    ultima_do_credor: datetime | None
+    cadencia: CadenciaDoLead | None
+    envios: list[EnvioWhatsApp]
+
+
+async def conversa(conn: Conexao, tenant_id: uuid.UUID, lead_id: uuid.UUID) -> Conversa:
+    cursor = await conn.execute(
+        """select coalesce(i.ativa, false) as whatsapp_ligado,
+                  coalesce((select array_agg(m->>'nome' order by m->>'nome')
+                              from jsonb_array_elements(coalesce(i.config->'modelos', '[]'::jsonb)) m), '{}')
+                    as modelos,
+                  (select max(x.criado_em) from app.interacoes x
+                    where x.lead_id = l.id and x.canal = 'whatsapp' and x.direcao = 'entrada') as ultima_do_credor,
+                  case when c.id is null then null else jsonb_build_object(
+                    'id', c.id, 'nome', c.nome, 'ativa', c.ativa, 'passo', l.cadencia_passo,
+                    'total_passos', jsonb_array_length(c.passos), 'inicio_em', l.cadencia_inicio_em,
+                    'proxima_acao_em', l.proxima_acao_em) end as cadencia
+             from app.leads l
+             left join app.cadencias c on c.tenant_id = l.tenant_id and c.id = l.cadencia_id
+             left join app.integracoes i on i.tenant_id = l.tenant_id and i.tipo = 'whatsapp'
+            where l.tenant_id = %s and l.id = %s""",
+        [tenant_id, lead_id],
+    )
+    base = await cursor.fetchone() or {}
+    cursor = await conn.execute(
+        """select id, tipo, coalesce(conteudo->>'modelo', left(conteudo->>'texto', 140), '') as resumo, status, erro,
+                  tentativas, pedido_por is null as automatico, criado_em, enviado_em
+             from app.whatsapp_envios
+            where tenant_id = %s and lead_id = %s
+            order by criado_em desc
+            limit 20""",
+        [tenant_id, lead_id],
+    )
+    return Conversa(
+        whatsapp_ligado=bool(base.get("whatsapp_ligado")),
+        modelos=list(base.get("modelos") or []),
+        ultima_do_credor=base.get("ultima_do_credor"),
+        cadencia=CadenciaDoLead.model_validate(base["cadencia"]) if base.get("cadencia") else None,
+        envios=[EnvioWhatsApp.model_validate(linha) for linha in await cursor.fetchall()],
+    )
+
+
+class UltimoEnriquecimento(BaseModel):
+    status: str
+    achados: dict[str, int] | None
+    erro: str | None
+    criado_em: datetime
+    concluido_em: datetime | None
+
+
+class ResolverDoLead(BaseModel):
+    bureau_ligado: bool
+    cpf: str | None  # "processo", "equipe" ou None: de onde vem o CPF (o valor nunca sai do servidor)
+    ultimo: UltimoEnriquecimento | None
+
+
+async def resolver(conn: Conexao, tenant_id: uuid.UUID, lead_id: uuid.UUID) -> ResolverDoLead:
+    cursor = await conn.execute(
+        """select coalesce(i.ativa, false) as bureau_ligado,
+                  case when d.lead_id is not null then 'equipe' when p.tem_documento then 'processo' end as cpf,
+                  (select jsonb_build_object('status', e.status, 'achados', e.achados, 'erro', e.erro,
+                                             'criado_em', e.criado_em, 'concluido_em', e.concluido_em)
+                     from app.enriquecimentos e
+                    where e.tenant_id = l.tenant_id and e.lead_id = l.id
+                    order by e.criado_em desc limit 1) as ultimo
+             from app.leads l
+             left join core.partes p on p.id = l.credor_parte_id
+             left join app.documentos_informados d on d.tenant_id = l.tenant_id and d.lead_id = l.id
+             left join app.integracoes i on i.tenant_id = l.tenant_id and i.tipo = 'bureau'
+            where l.tenant_id = %s and l.id = %s""",
+        [tenant_id, lead_id],
+    )
+    linha = await cursor.fetchone() or {}
+    return ResolverDoLead(
+        bureau_ligado=bool(linha.get("bureau_ligado")),
+        cpf=linha.get("cpf"),
+        ultimo=UltimoEnriquecimento.model_validate(linha["ultimo"]) if linha.get("ultimo") else None,
+    )
+
+
+class CessaoDoLead(BaseModel):
+    id: uuid.UUID
+    status: str
+    valor_pago: Decimal
+    escritura_em: datetime | None
+
+
+async def cessao(conn: Conexao, tenant_id: uuid.UUID, lead_id: uuid.UUID) -> CessaoDoLead | None:
+    cursor = await conn.execute(
+        """select id, status::text as status, valor_pago, escritura_em from app.cessoes
+            where tenant_id = %s and lead_id = %s""",
+        [tenant_id, lead_id],
+    )
+    linha = await cursor.fetchone()
+    return CessaoDoLead.model_validate(linha) if linha else None
 
 
 class Painel(BaseModel):

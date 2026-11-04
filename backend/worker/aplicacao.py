@@ -315,7 +315,10 @@ async def atualizar_score(conn: Conexao, requisicao_id: uuid.UUID, hoje: date) -
         """select r.valor_face, r.natureza::text as natureza, r.ano_loa, r.posicao_fila, r.status::text as status,
                   r.definitivo, r.data_base, r.honorarios_destacados, en.esfera::text as esfera,
                   en.prazo_medio_meses, en.regime_especial, p.falecido,
-                  array(select e.tipo::text from core.eventos e where e.requisicao_id = r.id) as eventos
+                  -- eventos da propria requisicao e do processo de origem (ex.: movimentos do DataJud)
+                  array(select e.tipo::text from core.eventos e
+                         where e.requisicao_id = r.id
+                            or (e.requisicao_id is null and e.numero_cnj = r.processo_origem)) as eventos
              from core.requisicoes r
              left join core.entes_devedores en on en.id = r.ente_id
              left join core.partes p on p.id = r.credor_parte_id

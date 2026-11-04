@@ -13,8 +13,10 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 from app.config import _decodificar_chave
 from worker.leitor import Esforco
 
-# So estes hosts podem ser consultados pelos coletores (evita SSRF por configuracao errada).
+# So estes hosts podem ser consultados (evita SSRF por configuracao errada).
 HOSTS_PERMITIDOS = frozenset({"comunicaapi.pje.jus.br"})
+HOSTS_DO_BUREAU = frozenset({"plataforma.bigdatacorp.com.br"})
+HOSTS_DO_DATAJUD = frozenset({"api-publica.datajud.cnj.jus.br"})
 
 TERMOS_PADRAO = (
     "requisitório",
@@ -65,6 +67,31 @@ class ConfiguracoesWorker(BaseSettings):
 
     # Ciclo
     ciclo_s: float = Field(default=300.0, ge=5)
+    # Mensageiro (WhatsApp e cadencias): bem mais frequente que a coleta.
+    mensageiro_s: float = Field(default=15.0, ge=2)
+    # Endereco publico do app (link de verificacao nas mensagens).
+    url_publica: str | None = None
+    # DataJud (API publica do CNJ). A chave publica e divulgada pelo CNJ e muda de tempos em tempos.
+    datajud_ativo: bool = False
+    datajud_chave: SecretStr | None = None
+    datajud_url: str = "https://api-publica.datajud.cnj.jus.br"
+    datajud_intervalo_s: float = Field(default=1.0, ge=0.2)
+    datajud_por_ciclo: int = Field(default=50, ge=1, le=1000)
+    datajud_revisitar_dias: int = Field(default=7, ge=1, le=90)
+    # Copiloto do WhatsApp (mesma ANTHROPIC_API_KEY do Leitor). Cada cliente liga a IA e define o
+    # orcamento na tela; o teto abaixo protege a operacao (US$ por cliente por dia).
+    copiloto_ativo: bool = True
+    copiloto_modelo: str = "claude-opus-5-5"
+    copiloto_esforco: Esforco = "low"
+    copiloto_concorrencia: int = Field(default=3, ge=1, le=16)
+    copiloto_orcamento_max_usd: Decimal = Field(default=Decimal("20"), ge=0)
+    copiloto_s: float = Field(default=3.0, ge=1)
+    # Follow-up (minutos importam pouco) e leitura da saude do numero/modelos na Meta.
+    followup_s: float = Field(default=60.0, ge=10)
+    meta_sincronia_s: float = Field(default=1800.0, ge=60)
+    # Resolver (bureau): as credenciais de cada cliente ficam cifradas no banco, nao aqui.
+    resolvedor_s: float = Field(default=30.0, ge=2)
+    bigdatacorp_url: str = "https://plataforma.bigdatacorp.com.br/pessoas"
 
     # Cifra do documento (CPF/CNPJ) das partes: as mesmas chaves da API.
     chaves_cifra: dict[int, SecretStr]
@@ -86,6 +113,18 @@ class ConfiguracoesWorker(BaseSettings):
         url = urlparse(self.djen_url)
         if self.ambiente != "teste" and (url.scheme != "https" or url.hostname not in HOSTS_PERMITIDOS):
             raise ValueError("djen_url precisa ser https em um host permitido")
+        datajud = urlparse(self.datajud_url)
+        if self.ambiente != "teste" and (datajud.scheme != "https" or datajud.hostname not in HOSTS_DO_DATAJUD):
+            raise ValueError("datajud_url precisa ser https em um host permitido")
+        if self.datajud_ativo and not self.datajud_chave:
+            raise ValueError("datajud_ativo=true exige MAQUINA_DATAJUD_CHAVE (chave publica divulgada pelo CNJ)")
+        bureau = urlparse(self.bigdatacorp_url)
+        if self.ambiente != "teste" and (bureau.scheme != "https" or bureau.hostname not in HOSTS_DO_BUREAU):
+            raise ValueError("bigdatacorp_url precisa ser https em um host permitido")
+        if self.url_publica:
+            object.__setattr__(self, "url_publica", self.url_publica.rstrip("/"))
+            if self.ambiente == "producao" and not self.url_publica.startswith("https://"):
+                raise ValueError("url_publica deve usar https")
         for versao, chave in self.chaves_cifra.items():
             _decodificar_chave(chave.get_secret_value(), f"chaves_cifra[{versao}]")
         if self.chave_cifra_ativa not in self.chaves_cifra:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cnpj, dataCurta, formatarCodigo, percentual, reais, reaisCompactoPreciso, sorteioEstavel } from "./formato";
+import { cnpj, dataCurta, decimalDeTexto, formatarCodigo, mascaraCpf, origemDoEvento, percentual, reais, reaisCompactoPreciso, sorteioEstavel } from "./formato";
 
 const semNbsp = (texto: string) => texto.replace(/ /g, " ");
 
@@ -40,5 +40,27 @@ describe("formato", () => {
       expect(v).toBeGreaterThanOrEqual(0);
       expect(v).toBeLessThan(1);
     }
+  });
+
+  it("mascara o CPF enquanto digita", () => {
+    expect(mascaraCpf("123")).toBe("123");
+    expect(mascaraCpf("1234")).toBe("123.4");
+    expect(mascaraCpf("1234567")).toBe("123.456.7");
+    expect(mascaraCpf("123.456.789-0912")).toBe("123.456.789-09");
+  });
+
+  it("le valor digitado em reais", () => {
+    expect(decimalDeTexto("90.000,50")).toBe("90000.50");
+    expect(decimalDeTexto("R$ 1.234,5")).toBe("1234.5");
+    expect(decimalDeTexto("90000.5")).toBe("90000.5");
+    expect(decimalDeTexto("0")).toBeNull();
+    expect(decimalDeTexto("abc")).toBeNull();
+  });
+
+  it("diz de onde veio o evento", () => {
+    expect(origemDoEvento("fonte", "datajud")).toBe("DataJud");
+    expect(origemDoEvento("fonte", "loa_uniao")).toBe("LOA da União");
+    expect(origemDoEvento("llm", null)).toBe("Leitor IA");
+    expect(origemDoEvento(null, "desconhecida")).toBe("fonte oficial");
   });
 });

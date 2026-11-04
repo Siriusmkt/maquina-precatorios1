@@ -38,11 +38,18 @@ class CifraDeCampo:
         self._ativa = versao_ativa
 
     def cifrar(self, texto: str, contexto: str) -> bytes:
-        nonce = os.urandom(_TAMANHO_NONCE)
-        corpo = self._cifras[self._ativa].encrypt(nonce, texto.encode(), contexto.encode())
-        return bytes([self._ativa]) + nonce + corpo
+        return self.cifrar_bytes(texto.encode(), contexto)
 
     def decifrar(self, dado: bytes, contexto: str) -> str:
+        return self.decifrar_bytes(dado, contexto).decode()
+
+    def cifrar_bytes(self, dados: bytes, contexto: str) -> bytes:
+        """Arquivos (documentos da sala de cessao) e textos usam o mesmo formato."""
+        nonce = os.urandom(_TAMANHO_NONCE)
+        corpo = self._cifras[self._ativa].encrypt(nonce, dados, contexto.encode())
+        return bytes([self._ativa]) + nonce + corpo
+
+    def decifrar_bytes(self, dado: bytes, contexto: str) -> bytes:
         if len(dado) < 1 + _TAMANHO_NONCE + 16:
             raise FalhaDeCifra("dado curto demais")
         cifra = self._cifras.get(dado[0])
@@ -50,7 +57,7 @@ class CifraDeCampo:
             raise FalhaDeCifra("versao de chave desconhecida")
         nonce, corpo = dado[1 : 1 + _TAMANHO_NONCE], dado[1 + _TAMANHO_NONCE :]
         try:
-            return cifra.decrypt(nonce, corpo, contexto.encode()).decode()
+            return cifra.decrypt(nonce, corpo, contexto.encode())
         except InvalidTag as exc:
             raise FalhaDeCifra("autenticacao falhou") from exc
 

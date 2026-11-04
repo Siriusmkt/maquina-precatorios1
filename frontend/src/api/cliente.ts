@@ -20,7 +20,7 @@ export class ErroApi extends Error {
   }
 }
 
-type Metodo = "GET" | "POST" | "PATCH" | "DELETE";
+type Metodo = "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
 
 interface Opcoes {
   metodo?: Metodo;
@@ -123,4 +123,62 @@ export async function api<T>(caminho: string, opcoes: Opcoes = {}): Promise<T> {
   if (!resposta.ok) throw await erroDe(resposta);
   if (resposta.status === 204) return undefined as T;
   return (await resposta.json()) as T;
+}
+
+/**
+ * Baixa um arquivo da API (PDF) e entrega como download. POST quando gerar o
+ * arquivo tambem registra algo (a carta vira interacao): leva o CSRF como o resto.
+ */
+export async function baixar(caminho: string, metodo: "GET" | "POST" = "GET", corpo?: unknown): Promise<void> {
+  const buscar = () => enviar(caminho, { metodo, corpo });
+  let resposta = await buscar();
+  if (resposta.status === 403 && (await erroDe(resposta.clone())).codigo === "csrf_invalido") {
+    esquecerCsrf();
+    resposta = await buscar();
+  }
+  if (resposta.status === 401 && (await renovarSessao())) resposta = await buscar();
+  if (!resposta.ok) throw await erroDe(resposta);
+  const nome = /filename="([^"]+)"/.exec(resposta.headers.get("content-disposition") ?? "")?.[1] ?? "documento";
+  const url = URL.createObjectURL(await resposta.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nome;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+/**
+ * Envia um arquivo (corpo binario) com o CSRF e progresso de envio. Usa XHR
+ * porque o fetch nao informa o progresso do upload. Renova a sessao uma vez.
+ */
+export async function enviarArquivo<T>(caminho: string, arquivo: Blob, aoProgredir?: (fracao: number) => void): Promise<T> {
+  const tentar = async () => {
+    const token = await obterCsrf();
+    return new Promise<{ status: number; texto: string }>((resolver, rejeitar) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", `/api${caminho}`);
+      xhr.withCredentials = true;
+      xhr.setRequestHeader("x-csrf-token", token);
+      xhr.setRequestHeader("accept", "application/json");
+      xhr.setRequestHeader("content-type", arquivo.type || "application/octet-stream");
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) aoProgredir?.(e.loaded / e.total);
+      };
+      xhr.onload = () => resolver({ status: xhr.status, texto: xhr.responseText });
+      xhr.onerror = () => rejeitar(new ErroApi(0, "rede", "A conexão caiu durante o envio."));
+      xhr.send(arquivo);
+    });
+  };
+  let r = await tentar();
+  if (r.status === 403 && r.texto.includes("csrf_invalido")) {
+    esquecerCsrf();
+    r = await tentar();
+  }
+  if (r.status === 401 && (await renovarSessao())) r = await tentar();
+  if (r.status < 200 || r.status >= 300) {
+    throw await erroDe(new Response(r.texto || null, { status: r.status, headers: { "content-type": "application/json" } }));
+  }
+  return (r.texto ? JSON.parse(r.texto) : undefined) as T;
 }
