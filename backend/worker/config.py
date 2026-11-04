@@ -16,6 +16,7 @@ from worker.leitor import Esforco
 # So estes hosts podem ser consultados (evita SSRF por configuracao errada).
 HOSTS_PERMITIDOS = frozenset({"comunicaapi.pje.jus.br"})
 HOSTS_DO_BUREAU = frozenset({"plataforma.bigdatacorp.com.br"})
+HOSTS_DO_DATAJUD = frozenset({"api-publica.datajud.cnj.jus.br"})
 
 TERMOS_PADRAO = (
     "requisitório",
@@ -70,6 +71,13 @@ class ConfiguracoesWorker(BaseSettings):
     mensageiro_s: float = Field(default=15.0, ge=2)
     # Endereco publico do app (link de verificacao nas mensagens).
     url_publica: str | None = None
+    # DataJud (API publica do CNJ). A chave publica e divulgada pelo CNJ e muda de tempos em tempos.
+    datajud_ativo: bool = False
+    datajud_chave: SecretStr | None = None
+    datajud_url: str = "https://api-publica.datajud.cnj.jus.br"
+    datajud_intervalo_s: float = Field(default=1.0, ge=0.2)
+    datajud_por_ciclo: int = Field(default=50, ge=1, le=1000)
+    datajud_revisitar_dias: int = Field(default=7, ge=1, le=90)
     # Resolver (bureau): as credenciais de cada cliente ficam cifradas no banco, nao aqui.
     resolvedor_s: float = Field(default=30.0, ge=2)
     bigdatacorp_url: str = "https://plataforma.bigdatacorp.com.br/pessoas"
@@ -94,6 +102,11 @@ class ConfiguracoesWorker(BaseSettings):
         url = urlparse(self.djen_url)
         if self.ambiente != "teste" and (url.scheme != "https" or url.hostname not in HOSTS_PERMITIDOS):
             raise ValueError("djen_url precisa ser https em um host permitido")
+        datajud = urlparse(self.datajud_url)
+        if self.ambiente != "teste" and (datajud.scheme != "https" or datajud.hostname not in HOSTS_DO_DATAJUD):
+            raise ValueError("datajud_url precisa ser https em um host permitido")
+        if self.datajud_ativo and not self.datajud_chave:
+            raise ValueError("datajud_ativo=true exige MAQUINA_DATAJUD_CHAVE (chave publica divulgada pelo CNJ)")
         bureau = urlparse(self.bigdatacorp_url)
         if self.ambiente != "teste" and (bureau.scheme != "https" or bureau.hostname not in HOSTS_DO_BUREAU):
             raise ValueError("bigdatacorp_url precisa ser https em um host permitido")

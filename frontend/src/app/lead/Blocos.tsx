@@ -34,7 +34,7 @@ import { AnelScore, Botao, Cartao, Selo } from "@/componentes/base";
 import { useAvisos } from "@/componentes/cena";
 import { PlacaCodigo, TextoDecifrado } from "@/componentes/efeitos";
 import { cn } from "@/lib/cn";
-import { NOMES_CANAL, NOMES_EVENTO, dataCurta, dataHoraCurta, percentual, reais } from "@/lib/formato";
+import { NOMES_CANAL, NOMES_EVENTO, dataCurta, dataHoraCurta, origemDoEvento, percentual, reais } from "@/lib/formato";
 import { CINEMA } from "@/lib/movimento";
 import { telefoneLegivel } from "../contato/regras";
 import { BuscaNoBureau } from "./Busca";
@@ -470,11 +470,11 @@ export function LinhaDoTempo({ tenant, d }: { tenant: string; d: LeadDetalhe }) 
   const editor = d.papel !== "leitura";
 
   const itens = useMemo(() => {
-    const eventos = d.eventos.map((e) => ({
-      chave: `e-${e.tipo}-${e.data_evento}`,
+    const eventos = d.eventos.map((e, i) => ({
+      chave: `e-${e.tipo}-${e.data_evento}-${i}`,
       quando: `${e.data_evento}T12:00:00`,
-      titulo: NOMES_EVENTO[e.tipo] ?? e.tipo,
-      texto: `Detectado por ${e.extraido_por === "llm" ? "Leitor IA" : e.extraido_por ?? "fonte"}${e.confianca ? ` · confiança ${Math.round(Number(e.confianca) * 100)}%` : ""}`,
+      titulo: e.tipo === "outro" && e.descricao ? e.descricao : (NOMES_EVENTO[e.tipo] ?? e.tipo),
+      texto: `Detectado por ${origemDoEvento(e.extraido_por, e.fonte)}${e.confianca ? ` · confiança ${Math.round(Number(e.confianca) * 100)}%` : ""}`,
       tipo: "processo" as const,
     }));
     const conversas = d.interacoes.map((i) => ({

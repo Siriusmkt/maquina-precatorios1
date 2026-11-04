@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cnpj, dataCurta, decimalDeTexto, formatarCodigo, mascaraCpf, percentual, reais, reaisCompactoPreciso, sorteioEstavel } from "./formato";
+import { cnpj, dataCurta, decimalDeTexto, formatarCodigo, mascaraCpf, origemDoEvento, percentual, reais, reaisCompactoPreciso, sorteioEstavel } from "./formato";
 
 const semNbsp = (texto: string) => texto.replace(/ /g, " ");
 
@@ -55,5 +55,12 @@ describe("formato", () => {
     expect(decimalDeTexto("90000.5")).toBe("90000.5");
     expect(decimalDeTexto("0")).toBeNull();
     expect(decimalDeTexto("abc")).toBeNull();
+  });
+
+  it("diz de onde veio o evento", () => {
+    expect(origemDoEvento("fonte", "datajud")).toBe("DataJud");
+    expect(origemDoEvento("fonte", "loa_uniao")).toBe("LOA da União");
+    expect(origemDoEvento("llm", null)).toBe("Leitor IA");
+    expect(origemDoEvento(null, "desconhecida")).toBe("fonte oficial");
   });
 });

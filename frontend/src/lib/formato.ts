@@ -170,3 +170,25 @@ export function decimalDeTexto(texto: string): string | null {
   if (!/^\d{1,13}(\.\d{1,2})?$/.test(normal)) return null;
   return Number(normal) > 0 ? normal : null;
 }
+
+/** Nome curto de cada fonte do radar (core.fontes.id). */
+export const NOMES_FONTE: Record<string, string> = {
+  djen: "DJEN",
+  datajud: "DataJud",
+  depre_tjsp: "DEPRE/TJSP",
+  trt2: "TRT-2",
+  trt15: "TRT-15",
+  loa_uniao: "LOA da União",
+  lista_tribunal: "lista oficial",
+  doe_sp: "DOE-SP",
+  doc_sp: "DOC-SP",
+};
+
+/** De onde veio o evento, para a linha do tempo. */
+export function origemDoEvento(extraidoPor: string | null, fonte: string | null): string {
+  if (fonte && NOMES_FONTE[fonte]) return NOMES_FONTE[fonte];
+  if (extraidoPor === "llm") return "Leitor IA";
+  if (extraidoPor === "regex") return "DJEN";
+  if (extraidoPor === "manual") return "equipe";
+  return "fonte oficial";
+}

@@ -466,6 +466,12 @@ def main() -> None:  # noqa: PLR0912, PLR0915 - roteiro linear de carga de dados
             "update app.tenants set config = config || %s where id = %s",
             [json.dumps({"contato_publico": "(11) 4000-0000 · contato@demo.local"}), tenant],
         )
+        # Fontes do radar com datas plausiveis (a faixa de fontes da tela mostra o frescor de cada uma).
+        for fonte, horas in (("djen", 3), ("datajud", 26), ("depre_tjsp", 9 * 24), ("loa_uniao", 40 * 24)):
+            c.execute(
+                "update core.fontes set ultima_coleta_em = now() - make_interval(hours => %s) where id = %s",
+                [horas, fonte],
+            )
         gestor = ids_usuarios["gestor@demo.local"]
         for titulo, estagio_alvo, dias in (
             ("Ligar para o credor e oferecer o código anti-golpe", "em_contato", 0),

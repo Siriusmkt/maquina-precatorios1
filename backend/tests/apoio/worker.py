@@ -307,3 +307,50 @@ class BureauFalso:
 
     def cpfs(self) -> list[str]:
         return [json.loads(p.content)["q"][4:-1] for p in self.pedidos]
+
+
+# --------------------------------------------------------------------- DataJud
+URL_DATAJUD = "https://datajud.teste.local"
+
+
+def movimento_datajud(nome: str, quando: str, codigo: int = 60, complemento: str | None = None) -> dict[str, Any]:
+    mov: dict[str, Any] = {"codigo": codigo, "nome": nome, "dataHora": quando}
+    if complemento:
+        mov["complementosTabelados"] = [
+            {"codigo": 1, "valor": 1, "nome": complemento, "descricao": "tipo_de_documento"}
+        ]
+    return mov
+
+
+def fonte_datajud(numero: str, movimentos: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
+    """_source no formato da API publica (dados ficticios; a API nao traz partes)."""
+    base: dict[str, Any] = {
+        "numeroProcesso": numero,
+        "classe": {"codigo": 156, "nome": "Cumprimento de sentença contra a Fazenda Pública"},
+        "tribunal": "TJSP",
+        "grau": "G1",
+        "dataAjuizamento": "2019-03-13T00:00:00.000Z",
+        "nivelSigilo": 0,
+        "orgaoJulgador": {"codigo": 1234, "nome": "1ª Vara da Fazenda Pública"},
+        "assuntos": [{"codigo": 10288, "nome": "Precatório"}],
+        "movimentos": movimentos,
+    }
+    return {**base, **extra}
+
+
+@dataclass
+class DatajudFalso:
+    """API publica falsa: guarda os pedidos e responde por numero de processo."""
+
+    processos: dict[str, dict[str, Any]] = field(default_factory=dict)
+    forcadas: list[httpx.Response] = field(default_factory=list)
+    pedidos: list[httpx.Request] = field(default_factory=list)
+
+    def __call__(self, pedido: httpx.Request) -> httpx.Response:
+        self.pedidos.append(pedido)
+        if self.forcadas:
+            return self.forcadas.pop(0)
+        numero = json.loads(pedido.content)["query"]["match"]["numeroProcesso"]
+        fonte = self.processos.get(numero)
+        hits = [{"_index": "api_publica", "_source": fonte}] if fonte else []
+        return httpx.Response(200, json={"took": 3, "hits": {"total": {"value": len(hits)}, "hits": hits}})

@@ -68,6 +68,24 @@ async def radar_resumo(tenant_id: uuid.UUID, usuario: Usuario, request: Request,
         return await q_radar.resumo(conn, tenant)
 
 
+class FonteDoRadar(BaseModel):
+    id: str
+    nome: str
+    ativo: bool
+    ultima_coleta_em: datetime | None
+
+
+@router.get("/radar/fontes")
+async def radar_fontes(tenant_id: uuid.UUID, usuario: Usuario, request: Request, rec: Rec) -> list[FonteDoRadar]:
+    """De onde vem o radar e quando cada fonte foi vista pela ultima vez (sem nada de configuracao)."""
+    async with rec.banco.como_usuario(usuario, contexto(request)) as conn:
+        await carregar_tenant(conn, tenant_id)
+        cursor = await conn.execute(
+            "select id, nome, ativo, ultima_coleta_em from core.fontes order by ultima_coleta_em desc nulls last, id"
+        )
+        return [FonteDoRadar.model_validate(linha) for linha in await cursor.fetchall()]
+
+
 class Assumir(BaseModel):
     model_config = ConfigDict(extra="forbid")
     requisicao_id: uuid.UUID

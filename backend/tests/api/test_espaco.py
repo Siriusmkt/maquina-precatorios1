@@ -292,3 +292,23 @@ async def test_pdf_da_proposta_sai_com_o_codigo_e_fica_na_auditoria(navegador: N
     await _logar(navegador, intruso)
     assert (await navegador.http.get(f"/api/t/{outro}/propostas/{proposta}/pdf")).status_code == 404
     assert (await navegador.http.get(f"/api/t/{tenant}/propostas/{proposta}/pdf")).status_code == 404
+
+
+async def test_fontes_do_radar_e_origem_dos_eventos(navegador: Navegador, cenario: Cenario) -> None:
+    tenant, operador = _base(cenario)
+    credor = cenario.parte()
+    processo = cenario.processo()
+    lead = cenario.lead(tenant, cenario.requisicao(credor=credor, processo=processo), credor)
+    cenario.sql("update core.fontes set ultima_coleta_em = now() where id = 'datajud'")
+    cenario.sql(
+        """insert into core.eventos (numero_cnj, tipo, data_evento, extraido_por, fonte_id, detalhe)
+           values (%s, 'outro', '2020-01-15', 'fonte', 'datajud', %s)""",
+        [processo, '{"movimento": "Trânsito em julgado", "codigo": 848}'],
+    )
+    await _logar(navegador, operador)
+    fontes = (await navegador.http.get(f"/api/t/{tenant}/radar/fontes")).json()
+    assert fontes[0]["id"] == "datajud"
+    assert {"djen", "depre_tjsp", "loa_uniao"} <= {f["id"] for f in fontes}
+    assert all(set(f) == {"id", "nome", "ativo", "ultima_coleta_em"} for f in fontes)  # nada de configuracao
+    [evento] = (await navegador.http.get(f"/api/t/{tenant}/leads/{lead}")).json()["eventos"]
+    assert (evento["fonte"], evento["descricao"]) == ("datajud", "Trânsito em julgado")

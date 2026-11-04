@@ -199,7 +199,14 @@ export interface LeadDetalhe {
   pessoas: { nome: string; papel: string }[];
   score: Score;
   precificacao: Precificacao | null;
-  eventos: { tipo: string; data_evento: string; extraido_por: string | null; confianca: string | null }[];
+  eventos: {
+    tipo: string;
+    data_evento: string;
+    extraido_por: string | null;
+    confianca: string | null;
+    fonte: string | null;
+    descricao: string | null;
+  }[];
   interacoes: {
     id: string;
     canal: string;
@@ -512,4 +519,11 @@ export interface Sala {
   pode_editar: boolean;
   pode_enviar: boolean;
   armazenamento: boolean;
+}
+
+export interface FonteDoRadar {
+  id: string;
+  nome: string;
+  ativo: boolean;
+  ultima_coleta_em: string | null;
 }

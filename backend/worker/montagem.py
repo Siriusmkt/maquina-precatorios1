@@ -16,7 +16,9 @@ from psycopg_pool import AsyncConnectionPool
 
 from worker.bureau import ClienteBigDataCorp
 from worker.config import ConfiguracoesWorker
+from worker.datajud import ClienteDatajud
 from worker.djen import ClienteDjen
+from worker.enriquecedor import Enriquecedor
 from worker.leitor import Extrator, ExtratorClaude
 from worker.mensageiro import Mensageiro
 from worker.pipeline import Pipeline, Pool, agora_sp
@@ -67,11 +69,35 @@ async def cliente_djen(
         await http.aclose()
 
 
+@contextlib.asynccontextmanager
+async def cliente_datajud(
+    config: ConfiguracoesWorker, transporte: httpx.AsyncBaseTransport | None = None, *, forcar: bool = False
+) -> AsyncIterator[ClienteDatajud | None]:
+    """Cliente do DataJud, ou None quando desligado (forcar=True liga para a sonda)."""
+    if not (config.datajud_ativo or forcar) or config.datajud_chave is None:
+        yield None
+        return
+    http = httpx.AsyncClient(
+        timeout=httpx.Timeout(30.0, connect=10.0),
+        headers={"user-agent": AGENTE},
+        follow_redirects=False,
+        transport=transporte,
+    )
+    try:
+        yield ClienteDatajud(
+            http, config.datajud_url, config.datajud_chave.get_secret_value(), intervalo_s=config.datajud_intervalo_s
+        )
+    finally:
+        await http.aclose()
+
+
 @dataclass(frozen=True)
 class Servicos:
+    pool: Pool
     pipeline: Pipeline
     mensageiro: Mensageiro
     resolvedor: Resolvedor
+    enriquecedor: Enriquecedor
 
 
 @contextlib.asynccontextmanager
@@ -81,6 +107,7 @@ async def montar(
     transporte_djen: httpx.AsyncBaseTransport | None = None,
     transporte_whatsapp: httpx.AsyncBaseTransport | None = None,
     transporte_bureau: httpx.AsyncBaseTransport | None = None,
+    transporte_datajud: httpx.AsyncBaseTransport | None = None,
     extrator: Extrator | None = None,
 ) -> AsyncIterator[Servicos]:
     """Abre e fecha tudo. Os transportes e o extrator opcionais existem para os testes."""
@@ -119,4 +146,12 @@ async def montar(
         )
         pilha.push_async_callback(http_bureau.aclose)
         resolvedor = Resolvedor(pool, config, ClienteBigDataCorp(http_bureau, config.bigdatacorp_url), relogio=agora_sp)
-        yield Servicos(pipeline=Pipeline(pool, config, djen, extrator), mensageiro=mensageiro, resolvedor=resolvedor)
+        datajud = await pilha.enter_async_context(cliente_datajud(config, transporte_datajud))
+        enriquecedor = Enriquecedor(pool, config, datajud, relogio=agora_sp)
+        yield Servicos(
+            pool=pool,
+            pipeline=Pipeline(pool, config, djen, extrator),
+            mensageiro=mensageiro,
+            resolvedor=resolvedor,
+            enriquecedor=enriquecedor,
+        )

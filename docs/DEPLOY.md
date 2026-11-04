@@ -179,7 +179,42 @@ select acao, count(*), max(criado_em) from app.auditoria
  where acao in ('documentos.exportado', 'cessoes.exportado') group by 1;
 ```
 
-## 8. Checklist depois do deploy
+## 8. Radar: DataJud e listas oficiais
+
+**DataJud (CNJ).** Completa os processos de origem das requisições ainda não pagas: classe, órgão julgador, sigilo, data de ajuizamento e os movimentos que interessam ao radar (expedição do requisitório, cálculos homologados, habilitação, cessão, penhora, embargos, levantamento, pagamento, trânsito em julgado). Primeiro os processos que já viraram lead; cada um é revisitado a cada 7 dias; uma consulta por segundo.
+
+1. **Rede.** O `worker` precisa de saída HTTPS para `api-publica.datajud.cnj.jus.br`.
+2. **Chave.** A API é pública, mas pede a chave divulgada pelo CNJ na wiki do DataJud (`datajud-wiki.cnj.jus.br`, página "API Pública"). Copie para `MAQUINA_DATAJUD_CHAVE`. O CNJ troca essa chave de tempos em tempos: quando o log disser "DataJud recusou a chave pública", copie a nova e reinicie o worker.
+3. **Confira do servidor** com um processo que você conhece:
+
+   ```bash
+   docker compose run --rm worker python -m worker sonda-datajud TJSP <numero-cnj>
+   ```
+
+   `"acesso": "ok"` com `achou: true` e `mapeados` mostrando os movimentos reconhecidos. Se `movimentos` vier alto e `mapeados` vazio, os nomes dos movimentos daquele tribunal são outros: o ajuste é nas regras de `worker/datajud.py`.
+4. Ligue com `MAQUINA_DATAJUD_ATIVO=true` e reinicie o `worker`.
+
+**Listas oficiais (DEPRE/TJSP, TRTs, LOA da União).** Os tribunais publicam a ordem cronológica de pagamento e o orçamento traz o que será pago no ano. O formato muda de tribunal para tribunal, então a importação é feita por quem opera a plataforma (o radar é comum a todos os clientes), em duas passadas:
+
+```bash
+# 1) simulação: mostra as colunas que entendeu e quantas linhas reconheceu, sem gravar nada
+docker compose run --rm -v "$PWD/listas:/listas:ro" worker python -m worker importar-lista /listas/depre-2026-11.csv --fonte depre_tjsp --tribunal TJSP
+# 2) se as colunas estiverem certas, grava
+docker compose run --rm -v "$PWD/listas:/listas:ro" worker python -m worker importar-lista /listas/depre-2026-11.csv --fonte depre_tjsp --tribunal TJSP --aplicar
+```
+
+- Salve a lista como CSV (Excel: *Salvar como → CSV*). Separador `;` ou `,` e acentos em UTF-8 ou Windows-1252 são aceitos.
+- Fontes: `depre_tjsp`, `trt2`, `trt15`, `loa_uniao` e `lista_tribunal` (qualquer outro tribunal, com `--tribunal` certo, por exemplo `TRT1`).
+- Colunas reconhecidas pelo nome: número do precatório/requisição, processo (CNJ), ordem/posição, valor, data-base, ano do orçamento, natureza, ente devedor, situação e tipo. **Nome e documento do credor são ignorados de propósito**: o credor só é revelado pelo fluxo do lead.
+- Casa pelo número do precatório no tribunal (ou pelo processo, quando ele tem uma única requisição). Atualiza a posição na fila e o ano do orçamento; não sobrescreve valor, data-base, natureza ou ente que já existiam; o status só avança. Cada importação fica em `core.importacoes_lista` com o hash do arquivo.
+
+```sql
+select fonte_id, tribunal, arquivo, criadas, atualizadas, ignoradas, criado_em
+  from core.importacoes_lista order by criado_em desc limit 20;
+select id, ultima_coleta_em, config ->> 'erro' as erro from core.fontes order by ultima_coleta_em desc nulls last;
+```
+
+## 9. Checklist depois do deploy
 
 ```bash
 # cabeçalhos de segurança e CSP

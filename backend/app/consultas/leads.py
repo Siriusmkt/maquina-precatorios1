@@ -81,11 +81,14 @@ class EventoLead(BaseModel):
     data_evento: date
     extraido_por: str | None
     confianca: Decimal | None
+    fonte: str | None  # datajud, depre_tjsp, loa_uniao...
+    descricao: str | None  # nome do movimento (DataJud), quando o tipo e generico
 
 
 async def eventos(conn: Conexao, requisicao_id: uuid.UUID, processo: str | None) -> list[EventoLead]:
     cursor = await conn.execute(
-        """select e.tipo::text as tipo, e.data_evento, e.extraido_por, e.confianca
+        """select e.tipo::text as tipo, e.data_evento, e.extraido_por, e.confianca, e.fonte_id as fonte,
+                  left(e.detalhe ->> 'movimento', 120) as descricao
              from core.eventos e
             where e.requisicao_id = %s or (%s::text is not null and e.numero_cnj = %s::text)
             order by e.data_evento desc, e.id desc

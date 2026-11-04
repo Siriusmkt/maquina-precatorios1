@@ -8,14 +8,14 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router";
 import { ErroApi } from "@/api/cliente";
-import { useAssumirLead, useLead, useRadar, useResumoRadar } from "@/api/consultas";
+import { useAssumirLead, useFontesRadar, useLead, useRadar, useResumoRadar } from "@/api/consultas";
 import type { FiltrosRadar, ItemRadar } from "@/api/tipos";
 import { AnelScore, Botao, Cartao, Esqueleto, Selo, Vazio } from "@/componentes/base";
 import { useAvisos } from "@/componentes/cena";
 import { TextoDecifrado } from "@/componentes/efeitos";
 import { type Blip, RadarCanvas, type Setor } from "@/componentes/RadarCanvas";
 import { cn } from "@/lib/cn";
-import { NOMES_EVENTO, dataCurta, paraNumero, reais, reaisCompacto, sorteioEstavel } from "@/lib/formato";
+import { NOMES_EVENTO, NOMES_FONTE, dataCurta, paraNumero, reais, reaisCompacto, relativo, sorteioEstavel } from "@/lib/formato";
 import { CINEMA, mola } from "@/lib/movimento";
 import { TituloDaPagina } from "../Shell";
 import { useApp } from "../contexto";
@@ -166,6 +166,40 @@ function LinhaRadar({ item, indice, destacado, tenant }: { item: ItemRadar; indi
   );
 }
 
+const AUTOMATICAS = new Set(["djen", "datajud"]);
+
+/** Fontes que alimentam o radar e quando cada uma foi vista: verde ate 2 dias, ambar ate 15, apagada sem coleta. */
+function FaixaDeFontes({ tenant }: { tenant: string }) {
+  const fontes = useFontesRadar(tenant).data ?? [];
+  const agora = Date.now();
+  // As coletadas sozinhas aparecem sempre; as listas importadas, so depois da primeira importacao.
+  const visiveis = fontes.filter((f) => f.ativo && NOMES_FONTE[f.id] && (f.ultima_coleta_em || AUTOMATICAS.has(f.id)));
+  if (visiveis.length === 0) return null;
+  return (
+    <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, ease: CINEMA }} className="-mt-4 mb-6 flex flex-wrap items-center gap-2">
+      <span className="text-[11.5px] uppercase tracking-[0.16em] text-tinta-500">Fontes</span>
+      {visiveis.map((f, i) => {
+        const dias = f.ultima_coleta_em ? (agora - new Date(f.ultima_coleta_em).getTime()) / 86_400_000 : null;
+        const cor = dias === null ? "bg-white/15" : dias <= 2 ? "bg-menta-400 shadow-[0_0_8px_rgb(78_240_196)]" : dias <= 15 ? "bg-ouro-400" : "bg-coral-400";
+        return (
+          <motion.span
+            key={f.id}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.05 * i }}
+            title={f.ultima_coleta_em ? `${f.nome}: atualizada ${relativo(f.ultima_coleta_em)}` : `${f.nome}: ainda sem coleta`}
+            className="inline-flex h-7 items-center gap-1.5 rounded-full border border-white/8 bg-white/[0.03] px-2.5 text-[12px] text-tinta-300"
+          >
+            <span className={cn("size-1.5 rounded-full", cor)} />
+            {NOMES_FONTE[f.id]}
+            <span className="text-tinta-600">{f.ultima_coleta_em ? relativo(f.ultima_coleta_em) : "sem coleta"}</span>
+          </motion.span>
+        );
+      })}
+    </motion.div>
+  );
+}
+
 export default function Radar() {
   const { tenant } = useApp();
   const [filtros, setFiltros] = useState<FiltrosRadar>({});
@@ -222,6 +256,7 @@ export default function Radar() {
   return (
     <div>
       <TituloDaPagina sobre="Radar · descoberta" titulo="Radar" destaque="o que acabou de aparecer" />
+      <FaixaDeFontes tenant={tenant.id} />
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,1fr)]">
         <Cartao className="relative overflow-hidden p-4">

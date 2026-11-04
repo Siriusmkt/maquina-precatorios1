@@ -12,6 +12,7 @@ import type {
   Equipe,
   Estagio,
   FiltrosRadar,
+  FonteDoRadar,
   IntegracaoBureau,
   IntegracaoWhatsApp,
   LeadDetalhe,
@@ -81,6 +82,14 @@ export function useRadar(tenant: string, filtros: FiltrosRadar) {
 
 export function useResumoRadar(tenant: string) {
   return useQuery({ queryKey: chaves.resumo(tenant), queryFn: () => api<ResumoRadar>(`/t/${tenant}/radar/resumo`) });
+}
+
+export function useFontesRadar(tenant: string) {
+  return useQuery({
+    queryKey: ["radar-fontes", tenant],
+    queryFn: () => api<FonteDoRadar[]>(`/t/${tenant}/radar/fontes`),
+    staleTime: 60_000,
+  });
 }
 
 export function usePainel(tenant: string) {
